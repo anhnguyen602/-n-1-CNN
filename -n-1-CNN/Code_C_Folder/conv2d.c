@@ -1,4 +1,7 @@
 // #include "MB_CONV.h"
+#include <stdio.h>
+#include <stdint.h>
+
 void conv2d(  //tuan anh
     const int16_t *input,       // Pointer to input data
     const int16_t *kernel,      // Pointer to kernel weights
@@ -12,11 +15,11 @@ void conv2d(  //tuan anh
     int output_channels,        // Number of output channels
     int stride_width,           // Stride width
     int stride_height,          // Stride height
-    PaddingType padding         // Padding type
+    int padding         // Padding type
 )
 {
     int padding_width, padding_height;
-    if (padding == PADDING_VALID) {
+    if (padding == 0) {
         padding_width = 0;
         padding_height = 0;
     }
