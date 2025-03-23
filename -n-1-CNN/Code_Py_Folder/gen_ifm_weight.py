@@ -55,5 +55,5 @@ for f in range(Weight_filter):
     print(f"✅ Đã xong Filter {f}.\n")
 
 # 4. Lưu toàn bộ OFM vào file
-save_to_hex_file(OFM, "-n-1-CNN/in-weight-out_golden/OFM.hex")
+# save_to_hex_file(OFM, "-n-1-CNN/in-weight-out_golden/OFM.hex")
 print("✅ Đã lưu toàn bộ OFM vào ofm.hex")

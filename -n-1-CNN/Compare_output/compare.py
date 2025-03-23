@@ -38,7 +38,7 @@ def compare_files(file1, file2, pe_id=None):
 
 if __name__ == "__main__":
     # Specify the file paths you want to compare
-    file1 = "address/OFM_PE0_DUT.hex"
-    file2 = "address/OFM_PE0_change.hex"
+    file1 = "C:/Users/Admin/OneDrive - Hanoi University of Science and Technology/Desktop/Do an 1/-n-1-CNN/in_weight_out_C/OFM.hex"
+    file2 = "C:/Users\Admin\OneDrive - Hanoi University of Science and Technology/Desktop/Do an 1/-n-1-CNN/in-weight-out_golden/OFM.hex"
 
     compare_files(file1, file2)  # Compare the two files

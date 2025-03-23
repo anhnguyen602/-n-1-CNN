@@ -10,14 +10,14 @@ def read_hex_file_weight(filename, shape):
     data = np.array([int(x.strip(), 16) for x in hex_values], dtype=np.int16)
 
     # Định dạng lại dữ liệu theo đúng thứ tự hàng → cột → channel → filter
-    H, W,C, F = shape  # File lưu theo (height → width → channel → filter)
+    H, W, C, F = shape  # File lưu theo (height → width → channel → filter)
     reshaped_data = np.zeros((H, W, C, F), dtype=np.int16)
 
     index = 0
     for f in range(F):  # Duyệt qua từng hàng
-        for h in range(H):  # Duyệt qua từng cột
-            for w in range(W):  # Duyệt qua từng channel
-                for c in range(C):  # Duyệt qua filters
+        for c in range(C):  # Duyệt qua từng cột
+            for h in range(H):  # Duyệt qua từng channel
+                for w in range(W):  # Duyệt qua filters
                     reshaped_data[h, w, c, f] = data[index]
                     index += 1
 
@@ -32,13 +32,13 @@ def read_hex_file(filename, shape):
     data = np.array([int(x.strip(), 16) for x in hex_values], dtype=np.int32)
 
     # Định dạng lại dữ liệu theo đúng thứ tự hàng → cột → channel
-    C,H,W = shape
+    H,W,C = shape
     reshaped_data = np.zeros((H, W, C), dtype=np.int32)
 
     index = 0
-    for h in range(H):  # Duyệt qua hàng
-        for w in range(W):  # Duyệt qua cột
-            for c in range(C):  # Duyệt qua channel
+    for c in range(C):  # Duyệt qua hàng
+        for h in range(H):  # Duyệt qua cột
+            for w in range(W):  # Duyệt qua channel
                 reshaped_data[h, w, c] = data[index]
                 index += 1
 
@@ -70,7 +70,7 @@ output_feature_channel = weight_filter
 # Đường dẫn file
 input_file = "-n-1-CNN/in-weight-out_golden/IFM.hex"
 weight_file = "-n-1-CNN/in-weight-out_golden/Weight.hex"
-output_file = "-n-1-CNN/in-weight-out_golden/OFM1.hex"
+output_file = "-n-1-CNN/in-weight-out_golden/OFM.hex"
 
 # Đọc dữ liệu từ file input và weight
 input_data = read_hex_file(input_file, (input_feature_height, input_feature_width, input_feature_channel))
