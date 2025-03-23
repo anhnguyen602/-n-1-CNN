@@ -1,8 +1,7 @@
-// #include "MB_CONV.h"
 #include <stdio.h>
 #include <stdint.h>
 
-void conv2d(  //tuan anh
+void conv2d(
     const int16_t *input,       // Pointer to input data
     const int16_t *kernel,      // Pointer to kernel weights
     const int16_t *bias,        // Pointer to bias (can be NULL)
@@ -69,4 +68,43 @@ void conv2d(  //tuan anh
          }
      }
  }
+}
+
+void print_matrix(int16_t *matrix, int rows, int cols) {
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            printf("%4d ", matrix[i * cols + j]);
+        }
+        printf("\n");
+    }
+}
+
+int main() {
+    // Example 3x3 input with 1 channel
+    int16_t input[3 * 3 * 1] = {
+        1, 2, 3,
+        4, 5, 6,
+        7, 8, 9
+    };
+
+    // Example 2x2 kernel with 1 channel and 1 output channel
+    int16_t kernel[2 * 2 * 1 * 1] = {
+        1, 0,
+        -1, 1
+    };
+
+    // No bias
+    int16_t bias[1] = {0};
+
+    // Output array
+    int16_t output[2 * 2 * 1];
+
+    // Perform convolution with stride 1, padding 0
+    conv2d(input, kernel, bias, output, 3, 3, 1, 2, 2, 1, 1, 1, 0);
+
+    // Print the output
+    printf("Output of convolution:\n");
+    print_matrix(output, 2, 2); // Output size will be 2x2
+
+    return 0;
 }
