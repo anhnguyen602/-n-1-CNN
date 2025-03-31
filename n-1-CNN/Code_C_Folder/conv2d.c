@@ -3,10 +3,10 @@
 #include <stdlib.h>
 
 void conv2d(
-    const int16_t *input,       // Pointer to input data
-    const int16_t *kernel,      // Pointer to kernel weights
-    const int16_t *bias,        // Pointer to bias (can be NULL)
-    int16_t *output,            // Pointer to output data
+    const float *input,       // Pointer to input data
+    const float *kernel,      // Pointer to kernel weights
+    const float *bias,        // Pointer to bias (can be NULL)
+    float *output,            // Pointer to output data
     int input_width,            // Input width
     int input_height,           // Input height
     int input_channels,         // Input channels
@@ -26,7 +26,7 @@ void conv2d(
     for (int oc = 0; oc < output_channels; oc++) {
         for (int oh = 0; oh < output_height; oh++) {
             for (int ow = 0; ow < output_width; ow++) {
-                int32_t value = 0; // Output value for the current pixel
+                float value = 0; // Output value for the current pixel
                 for (int ic = 0; ic < input_channels; ic++) {
                     for (int kh = 0; kh < kernel_height; kh++) {
                         for (int kw = 0; kw < kernel_width; kw++) {
@@ -54,7 +54,7 @@ void conv2d(
 }
 
 // Function to read hex file into an integer array
-void read_hex_file(const char *filename, int16_t *data, int size) {
+void read_hex_file(const char *filename, float *data, int size) {
     FILE *file = fopen(filename, "r");
     if (!file) {
         perror("File open failed");
@@ -65,14 +65,14 @@ void read_hex_file(const char *filename, int16_t *data, int size) {
     for (int i = 0; i < size; i++) {
         unsigned int value;
         fscanf(file, "%x", &value);
-        data[i] = (int16_t)value;  // Store as 16-bit integer
+        data[i] = (float)value;  // Store as 16-bit integer
     }
     
     fclose(file);
 }
 
 // Function to write the output data to a hex file
-void write_output_file(const char *filename, const int16_t *output, int size) {
+void write_output_file(const char *filename, const float *output, int size) {
     FILE *file = fopen(filename, "w");
     if (!file) {
         perror("File open failed");
@@ -101,10 +101,10 @@ int main() {
     int output_size = output_width * output_height * output_channels;
 
     // Allocate memory for the input, kernel, output, and bias
-    int16_t *input = (int16_t *)malloc(input_size * sizeof(int16_t));
-    int16_t *kernel = (int16_t *)malloc(kernel_size * sizeof(int16_t));
-    int16_t *output = (int16_t *)malloc(output_size * sizeof(int16_t));
-    int16_t *bias = (int16_t *)calloc(output_channels, sizeof(int16_t));  // Bias initialized to 0
+    float *input = (float *)malloc(input_size * sizeof(float));
+    float *kernel = (float *)malloc(kernel_size * sizeof(float));
+    float *output = (float *)malloc(output_size * sizeof(float));
+    float *bias = (float *)calloc(output_channels, sizeof(float));  // Bias initialized to 0
 
     // Read the input and kernel data from the hex files
     read_hex_file("C:/Users/Admin/OneDrive - Hanoi University of Science and Technology/Desktop/Do an 1/-n-1-CNN/in-weight-out_golden/IFM.hex", input, input_size);
