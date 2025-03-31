@@ -1,4 +1,4 @@
-#include <fully_connected.h>
+#include "fully_connected.h"
 
 void fully_connected(float *input, float *weights, float *output, int input_size, int output_size) {
     for (int i = 0; i < output_size; i++) {

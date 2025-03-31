@@ -1,4 +1,4 @@
-#include<relu.h>
+#include"relu.h"
 
 void relu(float *input, float *output, int size) {
     for (int i = 0; i < size; i++) {

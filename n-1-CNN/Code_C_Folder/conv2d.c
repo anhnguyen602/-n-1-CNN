@@ -1,7 +1,5 @@
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
 
+#include "conv2d.h"
 void conv2d(
     const float *input,       // Pointer to input data
     const float *kernel,      // Pointer to kernel weights
@@ -53,83 +51,5 @@ void conv2d(
     }
 }
 
-// Function to read hex file into an integer array
-void read_hex_file(const char *filename, float *data, int size) {
-    FILE *file = fopen(filename, "r");
-    if (!file) {
-        perror("File open failed");
-        printf("Failed to open file: %s\n", filename);  // Print the filename that failed to open
-        exit(EXIT_FAILURE);
-    }
 
-    for (int i = 0; i < size; i++) {
-        unsigned int value;
-        fscanf(file, "%x", &value);
-        data[i] = (float)value;  // Store as 16-bit integer
-    }
-    
-    fclose(file);
-}
 
-// Function to write the output data to a hex file
-void write_output_file(const char *filename, const float *output, int size) {
-    FILE *file = fopen(filename, "w");
-    if (!file) {
-        perror("File open failed");
-        printf("Failed to open file: %s\n", filename);  // Print the filename that failed to open
-        exit(EXIT_FAILURE);
-    }
-
-    for (int i = 0; i < size; i++) {
-        fprintf(file, "%02X\n", output[i] & 0xFF);  // Write as hex
-    }
-
-    fclose(file);
-}
-
-int main() {
-    // Define the dimensions of the input and kernel
-    int input_width = 5, input_height = 5, input_channels = 2;
-    int kernel_width = 3, kernel_height = 3, output_channels = 4;
-    int stride_width = 1, stride_height = 1, padding = 0;
-
-    // Calculate the size of the input, kernel, and output arrays
-    int input_size = input_width * input_height * input_channels;
-    int kernel_size = kernel_width * kernel_height * input_channels * output_channels;
-    int output_width = (input_width - kernel_width + 2 * padding) / stride_width + 1;
-    int output_height = (input_height - kernel_height + 2 * padding) / stride_height + 1;
-    int output_size = output_width * output_height * output_channels;
-
-    // Allocate memory for the input, kernel, output, and bias
-    float *input = (float *)malloc(input_size * sizeof(float));
-    float *kernel = (float *)malloc(kernel_size * sizeof(float));
-    float *output = (float *)malloc(output_size * sizeof(float));
-    float *bias = (float *)calloc(output_channels, sizeof(float));  // Bias initialized to 0
-
-    // Read the input and kernel data from the hex files
-    read_hex_file("C:/Users/Admin/OneDrive - Hanoi University of Science and Technology/Desktop/Do an 1/-n-1-CNN/in-weight-out_golden/IFM.hex", input, input_size);
-    read_hex_file("C:/Users/Admin/OneDrive - Hanoi University of Science and Technology/Desktop/Do an 1/-n-1-CNN/in-weight-out_golden/Weight.hex", kernel, kernel_size);
-
-    // Perform the convolution
-    conv2d(input, kernel, bias, output, input_width, input_height, input_channels,
-           kernel_width, kernel_height, output_channels, stride_width, stride_height, padding);
-
-    // Write the output data to a hex file
-    write_output_file("C:/Users/Admin/OneDrive - Hanoi University of Science and Technology/Desktop/Do an 1/-n-1-CNN/in_weight_out_C/OFM.hex", output, output_size);
-
-    // Free allocated memory
-    // for (int i = 0; i < kernel_size; i++){
-    //     printf("%2X ", kernel[i]);
-    // }
-    for (int i = 0; i < output_size; i++){
-        printf("%2X ", output[i]);
-    }
-    free(input);
-    free(kernel);
-    free(output);
-    free(bias);
-    
-    printf("Convolution completed and output written to output.hex\n");
-
-    return 0;
-}
