@@ -1,62 +1,70 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 
-void rotate_filter(double *weight, int weight_height, int weight_channels, int filter) {
-    double tmp_array[50000];
+// Hàm đọc dữ liệu từ file chứa float với thứ tự channel → hàng → cột
+void read_float_file(const char *filename, float *data, int H, int W, int C) {
+    FILE *file = fopen(filename, "r");
+    if (file == NULL) {
+        printf("Không thể mở file %s\n", filename);
+        exit(1);
+    }
 
-    // Xoay bộ lọc (reverse các phần tử trong mỗi bộ lọc)
-    for (int f = 0; f < filter * weight_channels; f++) {
-        for (int j = 0; j < weight_height * weight_height; j++) {
-            tmp_array[j + f * weight_height * weight_height] = weight[weight_height * weight_height - 1 - j + f * weight_height * weight_height];
+    // Đọc từng giá trị float từ file và lưu vào mảng
+    for (int i = 0; i < H * W * C; i++) {
+        if (fscanf(file, "%f", &data[i]) != 1) {
+            printf("Lỗi khi đọc file %s\n", filename);
+            fclose(file);
+            exit(1);
         }
     }
 
-    // Cập nhật bộ lọc với các giá trị đã xoay
-    for (int i = 0; i < weight_height * weight_height * weight_channels * filter; i++) {
-        weight[i] = tmp_array[i];
-    }
+    fclose(file);
 }
 
-void print_filter(double *weight, int weight_height, int weight_channels, int filter) {
-    int idx = 0;
-    for (int f = 0; f < filter; f++) {
-        printf("Filter %d:\n", f + 1);
-        for (int c = 0; c < weight_channels; c++) {
-            printf("  Channel %d:\n", c + 1);
-            for (int i = 0; i < weight_height; i++) {
-                for (int j = 0; j < weight_height; j++) {
-                    printf("%.2f ", weight[idx]);
-                    idx++;
-                }
-                printf("\n");
+// Hàm chuyển đổi dữ liệu từ (channel, row, col) thành (row, col, channel)
+void transpose_data(float *data, float *reshaped_data, int H, int W, int C) {
+    int index = 0;
+    for (int c = 0; c < C; c++) {   // Duyệt qua các kênh (channels)
+        for (int h = 0; h < H; h++) {  // Duyệt qua hàng (rows)
+            for (int w = 0; w < W; w++) {  // Duyệt qua cột (columns)
+                reshaped_data[h * W * C + w * C + c] = data[index++];
             }
         }
     }
 }
 
 int main() {
-    int weight_height = 5; // Kích thước chiều cao bộ lọc (3x3)
-    int weight_channels = 3; // Chỉ có 1 kênh cho đơn giản
-    int filter = 2; // Số lượng bộ lọc
+    // Kích thước dữ liệu
+    int H = 32;  // Số hàng (rows)
+    int W = 32;  // Số cột (columns)
+    int C = 3;  // Số kênh (channels)
 
-    // Khởi tạo bộ lọc ngẫu nhiên
-    double weight[weight_height * weight_height * weight_channels * filter];
-    srand(time(0)); // Đảm bảo sinh ra các số ngẫu nhiên khác nhau mỗi lần chạy
+    // Tạo mảng để lưu dữ liệu (channel, row, col)
+    float *data = (float *)malloc(H * W * C * sizeof(float));
 
-    // Khởi tạo bộ lọc với các giá trị ngẫu nhiên
-    for (int i = 0; i < weight_height * weight_height * weight_channels * filter; i++) {
-        weight[i] = rand() % 10; // Các giá trị ngẫu nhiên từ 0 đến 9
+    // Đọc dữ liệu từ file vào mảng
+    const char *filename = "data/image_0.txt";  // Đường dẫn đến file dữ liệu
+    read_float_file(filename, data, H, W, C);
+
+    // Tạo mảng để lưu dữ liệu đã được reshaped (row, col, channel)
+    float *reshaped_data = (float *)malloc(H * W * C * sizeof(float));
+
+    // Chuyển dữ liệu từ (channel, row, col) thành (row, col, channel)
+    transpose_data(data, reshaped_data, H, W, C);
+
+    // In dữ liệu sau khi reshaped (hàng, cột, channel)
+    printf("Dữ liệu sau khi reshaped (hàng, cột, channel):\n");
+    for (int h = 0; h < H; h++) {
+        for (int w = 0; w < W; w++) {
+            for (int c = 0; c < C; c++) {
+                printf("%.6f/n ", reshaped_data[h * W * C + w * C + c]);
+            }
+        }
     }
 
-    printf("Bộ lọc trước khi xoay:\n");
-    print_filter(weight, weight_height, weight_channels, filter);
-
-    // Xoay bộ lọc
-    rotate_filter(weight, weight_height, weight_channels, filter);
-
-    printf("\nBộ lọc sau khi xoay:\n");
-    print_filter(weight, weight_height, weight_channels, filter);
+    // Giải phóng bộ nhớ
+    free(data);
+    free(reshaped_data);
 
     return 0;
 }
