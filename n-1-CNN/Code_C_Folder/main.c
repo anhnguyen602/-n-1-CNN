@@ -7,6 +7,35 @@
 // #include "fully_connected.h"
 // #include "maxpool.h"
 // #include "softmax.h"
+void flatten_from_hwc_to_whc_flatten(
+    float *input, float *output,
+    int H, int W, int C
+) {
+    int idx = 0;
+    for (int h = 0; h < H; h++) {
+        for (int w = 0; w < W; w++) {
+            for (int c = 0; c < C; c++) {
+                int original_idx = (c * H+ h) * W + w;  // HWC
+                output[idx++] = input[original_idx];     // WHC-flatten
+            }
+        }
+    }
+}
+
+void save_float_array_to_txt_file(const char *filename, float *array, int size) {
+    FILE *f = fopen(filename, "w");
+    if (!f) {
+        printf("⚠️ Không thể mở file %s để ghi!\n", filename);
+        return;
+    }
+
+    for (int i = 0; i < size; i++) {
+        fprintf(f, "%.6f\n", array[i]);  // Ghi 6 chữ số thập phân
+    }
+
+    fclose(f);
+}
+
 int read_label_from_file(const char *filename) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
@@ -93,7 +122,7 @@ void fully_connected(float *input, float *weights, float *output, int input_size
         for (int j = 0; j < input_size; j++) {
             output[i] += input[j] * weights[i * input_size + j]; // Tính tổng trọng số
         }
-        // output[i] = relu(output[i]); // Áp dụng ReLU
+        //output[i] = relu(output[i]); // Áp dụng ReLU
     }
 }
 void conv2d(
@@ -159,109 +188,95 @@ void read_from_file(const char *filename, float *array, int size) {
 
     fclose(file);
 }
-void transpose_data(float *data, float *reshaped_data, int H, int W, int C) {
-    int index = 0;
-    for (int c = 0; c < C; c++) {   // Duyệt qua các kênh (channels)
-        for (int h = 0; h < H; h++) {  // Duyệt qua hàng (rows)
-            for (int w = 0; w < W; w++) {  // Duyệt qua cột (columns)
-                reshaped_data[h * W * C + w * C + c] = data[index++];
-            }
-        }
-    }
-}
+
+
 
 int main() {
-    // Các tham số kích thước đầu vào và số lượng lớp Fully Connected
-    int input_width = 32, input_height = 32, input_channels = 3;
-    int output_size = 10;  // Ví dụ lớp fully connected có 10 đầu ra (phân loại 10 lớp)
+    // ⚙️ Kích thước đầu vào & tham số model
+    const int input_width = 32, input_height = 32, input_channels = 3;
+    const int output_size = 10;
+    const int kernel_size = 3, padding = 1;
+    const int conv1_channels = 32;
+    const int conv2_channels = 64;
+    const int dense1_size = 64;
+    const int flatten_size = 8 * 8 * conv2_channels;  // sau 2 lần pooling
 
-    // Các tham số cho kích thước các lớp Conv2D
-    int kernel_size = 3;   // Kích thước của kernel (3x3)
-    int channels_conv1 = 32, channels_conv2 = 32, channels_conv3 = 64, channels_conv4 = 64;
-    int padding = 1;
+    // ⚙️ Khai báo trọng số (đã được xuất từ Python)
+    float kernel1[kernel_size * kernel_size * input_channels * conv1_channels];
+    float kernel2[kernel_size * kernel_size * conv1_channels * conv2_channels];
+    float weight_dense1[flatten_size * dense1_size];
+    float weight_output[dense1_size * output_size];
 
-    // Giả định dữ liệu đầu vào (sử dụng giá trị ngẫu nhiên cho đơn giản)
+    // ⚙️ Bias = NULL (không dùng)
+    float* bias_null = NULL;
 
-    // read_from_file("data/image_1.txt", input, 32 * 32 * 3);
-    // // Khai báo trọng số và bias cho các lớp Conv2D
-    float kernel1[kernel_size * kernel_size * input_channels * channels_conv1];
-    float kernel2[kernel_size * kernel_size * channels_conv1 * channels_conv2];
-    float kernel3[kernel_size * kernel_size * channels_conv2 * channels_conv3];
-    float kernel4[kernel_size * kernel_size * channels_conv3 * channels_conv4];
-    float weights_fc[8 * 8 * 64 * output_size]; // Trọng số lớp fully connected
-    float bias1[32] = {0};  // Khởi tạo bias = 0
-    float bias2[32] = {0};  // Khởi tạo bias = 0
-    float bias3[64] = {0};  // Khởi tạo bias = 0
-    float bias4[64] = {0};  // Khởi tạo bias = 0
+    // ⚙️ Load weights từ file
+    read_from_file("weight/weight/conv1_weight.txt", kernel1, sizeof(kernel1) / sizeof(float));
+    read_from_file("weight/weight/conv2_weight.txt", kernel2, sizeof(kernel2) / sizeof(float));
+    read_from_file("weight/weight/dense1_weight.txt", weight_dense1, sizeof(weight_dense1) / sizeof(float));
+    read_from_file("weight/weight/output_weight.txt", weight_output, sizeof(weight_output) / sizeof(float));
 
-    read_from_file("weight/weights_NEW_0.txt", kernel1, kernel_size * kernel_size * input_channels * channels_conv1);
-    read_from_file("weight/weights_NEW_1.txt", kernel2, kernel_size * kernel_size * channels_conv1 * channels_conv2);
-    read_from_file("weight/weights_NEW_3.txt", kernel3, kernel_size * kernel_size * channels_conv2 * channels_conv3);
-    read_from_file("weight/weights_NEW_4.txt", kernel4, kernel_size * kernel_size * channels_conv3 * channels_conv4);
-    read_from_file("weight/weights_NEW_7.txt", weights_fc, 8 * 8 * 64 * output_size);
+    // ⚙️ Buffer cho từng layer
+    float input[32 * 32 * 3];
+    float output_conv1[32 * 32 * conv1_channels];
+    float output_pool1[16 * 16 * conv1_channels];
+    float output_conv2[16 * 16 * conv2_channels];
+    float output_pool2[8 * 8 * conv2_channels];
+    float flatten[8*8*conv2_channels];
+    float output_fc1[dense1_size];
+    float output_fc2[output_size];
 
-    // Kết quả sau mỗi lớp Conv2D
-    float output_conv1[input_width * input_height  * channels_conv1];
-    float output_conv2[input_width  * input_height  * channels_conv2];
-    float output_conv2_1[(input_width/2)  * (input_height/2)  * channels_conv3];
-    float output_conv3[(input_width/2)  * (input_height/2)  * channels_conv3];
-    float output_conv4[(input_width/2) * (input_height/2) * channels_conv4];
-    float output_conv4_1[(input_width/4) * (input_height/4) * channels_conv4];
-
-    // Kết quả sau khi chuyển đổi thành dữ liệu cho lớp fully connected
-    float fc_output[output_size]; // Đầu ra của lớp Fully Connected
     int correct_predictions = 0;
 
-for(int i = 0; i < 1000; i++){
-        char input_filename[50];
-        snprintf(input_filename, sizeof(input_filename), "data/image_%d.txt", i); // Đọc từng ảnh từ "data/image_0.txt" đến "data/image_99.txt"
-        float input[32 * 32 * 3];
-        read_from_file(input_filename, input, 32 * 32 * 3);
-        transpose_data(input, input, 32,32,3);
-        char label_filename[50];
-        snprintf(label_filename, sizeof(label_filename), "data/label_%d.txt", i);
-        int true_label = read_label_from_file(label_filename);  // Đọc label từ file
-    // Áp dụng các lớp Conv2D với ReLU sau mỗi lớp Conv2D
-    conv2d(input, kernel1, bias1, output_conv1, input_width, input_height, input_channels, kernel_size ,kernel_size, channels_conv1, 1, 1 , 1);
-    relu(output_conv1, output_conv1, input_width  * input_height  * channels_conv1);
-    transpose_data(output_conv1, output_conv1, 32,32,32);
-    conv2d(output_conv1, kernel2, bias2, output_conv2, input_width , input_height , channels_conv1, kernel_size, kernel_size, channels_conv2, 1,1,1);
-    relu(output_conv2, output_conv2, input_width  * input_height  * channels_conv2);
+    for (int i = 0; i < 10000; i++) {
+        // 🧠 Đọc input & label
+        char input_file[50], label_file[50];
+        snprintf(input_file, sizeof(input_file), "data/image_%d.txt", i);
+        snprintf(label_file, sizeof(label_file), "data/label_%d.txt", i);
+        read_from_file(input_file, input, 32 * 32 * 3);
+        // for (int i = 0; i < 10; i++){
+        //     printf("%f\n", input[i]);
+        // }   
+        int true_label = read_label_from_file(label_file);
 
-    // Áp dụng Max Pooling sau mỗi lớp Conv2D
-    maxpool(output_conv2, output_conv2_1, input_width, input_height, channels_conv2, 2, 2, 2);
-    transpose_data(output_conv2_1, output_conv2_1, 16,16,32);
-    conv2d(output_conv2_1, kernel3, bias3, output_conv3, input_width / 2, input_height / 2, channels_conv2, kernel_size, kernel_size, channels_conv3, 1,1,1);
-    relu(output_conv3, output_conv3, (input_width/2)  * (input_height/2)  * channels_conv3);
-    transpose_data(output_conv3, output_conv3, 16,16,64);
-    conv2d(output_conv3, kernel4, bias4, output_conv4, input_width/2 , input_height / 2, channels_conv3, kernel_size, kernel_size, channels_conv4, 1,1,1);
-    relu(output_conv4, output_conv4, (input_width / 2) * (input_height / 2) * channels_conv4);
+        // 🧪 Conv1 → ReLU → Pool
+        conv2d(input, kernel1, bias_null, output_conv1,
+               input_width, input_height, input_channels,
+               kernel_size, kernel_size, conv1_channels,
+               1, 1, padding);
+        //transpose_data_whc (output_conv1, output_conv1, 16, 16, conv1_channels);
+        relu(output_conv1, output_conv1, 32 * 32 * conv1_channels);
+        maxpool(output_conv1, output_pool1, 32, 32, conv1_channels, 2, 2, 2);
 
-    // Áp dụng Max Pooling sau lớp Conv2D thứ 4
-    maxpool(output_conv4, output_conv4_1, input_width / 2, input_height / 2, channels_conv4, 2, 2, 2);
+        // 🧪 Conv2 → ReLU → Pool
+        conv2d(output_pool1, kernel2, bias_null, output_conv2,
+               16, 16, conv1_channels,
+               kernel_size, kernel_size, conv2_channels,
+               1, 1, padding);
+        //transpose_data_whc (output_conv2, output_conv2, 16, 16, conv2_channels);
+        relu(output_conv2, output_conv2, 16 * 16 * conv2_channels);
+        maxpool(output_conv2, output_pool2, 16, 16, conv2_channels, 2, 2, 2);
 
-    // Chuyển dữ liệu từ 2D sang 1D để đưa vào lớp Fully Connected
-    
+        flatten_from_hwc_to_whc_flatten(output_pool2 , flatten, 8, 8, 64) ;
+        // 🧠 Dense1 → ReLU
+        fully_connected(flatten, weight_dense1, output_fc1, flatten_size, dense1_size);
+        relu(output_fc1, output_fc1, dense1_size);
 
-    // Áp dụng lớp Fully Connected
-    fully_connected(output_conv4_1, weights_fc, fc_output, 8 * 8 * channels_conv4, output_size);
-    //relu(fc_output, fc_output, output_size);
-    softmax(fc_output, fc_output, output_size);
-    int predicted_label = get_max_label(fc_output, output_size);
+        // 🧠 Output → Softmax
+        fully_connected(output_fc1, weight_output, output_fc2, dense1_size, output_size);
+        softmax(output_fc2, output_fc2, output_size);
 
-    // So sánh label dự đoán với label thực tế
-    if (predicted_label == true_label) {
-        correct_predictions++;  // Tăng số lượng dự đoán đúng
+        // 🎯 Dự đoán và so sánh
+        int predicted_label = get_max_label(output_fc2, output_size);
+        if (predicted_label == true_label)
+            correct_predictions++;
+
+        printf("Image %d - Predict: %d, True: %d\n", i, predicted_label, true_label);
     }
-    // printf("Output of the fully connected layer for image %d:\n", i);
-    // for (int j = 0; j < output_size; j++) {
-    //     printf("%f ", fc_output[j]);
-    // }
-    //     printf("\n");
 
-    // In kết quả đầu ra của lớp fully connected và in ra label dự đoán
-    printf("Image %d - Predicted label: %d, True label: %d\n", i, predicted_label, true_label);
-}
-    printf("Total correct predictions: %d\n", correct_predictions);
+    printf("\n✅ Accuracy: %.2f%% (%d / 10000 correct)\n",
+           (float)correct_predictions / 100.0, correct_predictions);
+
     return 0;
 }
+

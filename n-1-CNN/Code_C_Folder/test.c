@@ -1,70 +1,287 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
+#include <math.h>
+// #include "conv2d.h"
+// #include "relu.h"
+// #include "fully_connected.h"
+// #include "maxpool.h"
+// #include "softmax.h"
+void save_float_array_to_txt_file(const char *filename, float *array, int size) {
+    FILE *f = fopen(filename, "w");
+    if (!f) {
+        printf("⚠️ Không thể mở file %s để ghi!\n", filename);
+        return;
+    }
 
-// Hàm đọc dữ liệu từ file chứa float với thứ tự channel → hàng → cột
-void read_float_file(const char *filename, float *data, int H, int W, int C) {
+    for (int i = 0; i < size; i++) {
+        fprintf(f, "%f\n", array[i]);  // Ghi 6 chữ số thập phân
+    }
+
+    fclose(f);
+}
+
+int read_label_from_file(const char *filename) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
+        printf("Error opening label file %s\n", filename);
+        exit(1);
+    }
+
+    int label;
+    // Đọc số trong dấu ngoặc vuông, ví dụ: [6]
+    fscanf(file, "[%d]", &label);  // Đọc label trong dấu ngoặc vuông
+    fclose(file);
+    return label;
+}
+
+
+int get_max_label(float *output, int size) {
+    int max_label = 0;
+    float max_value = output[0];
+    for (int i = 1; i < size; i++) {
+        if (output[i] > max_value) {
+            max_value = output[i];
+            max_label = i;
+        }
+    }
+    return max_label;
+}
+void softmax(float *input, float *output, int size) {
+    float sum = 0.0;
+    
+    // Tính tổng của exp(x_i) cho tất cả các phần tử trong mảng input
+    for (int i = 0; i < size; i++) {
+        output[i] = exp(input[i]); // Áp dụng exp cho từng phần tử trong input
+        sum += output[i];  // Cộng dồn tổng exp(x_i)
+    }
+
+    // Chuẩn hóa kết quả để tổng bằng 1
+    for (int i = 0; i < size; i++) {
+        output[i] /= sum;  // Chia từng giá trị exp(x_i) cho tổng
+    }
+}
+void relu(float *input, float *output, int size) {
+    for (int i = 0; i < size; i++) {
+        output[i] = (input[i] > 0) ? input[i] : 0;  // Áp dụng ReLU: max(0, input)
+    }
+}
+void maxpool(
+    const float *input,       // Pointer to input data
+    float *output,            // Pointer to output data
+    int input_width,            // Input width
+    int input_height,           // Input height
+    int input_channels,         // Input channels
+    int stride_width,           // Stride width 
+    int stride_height,           // Stride height
+    int pool_size               // Pool size (assumed to be 2x2 for this implementation)
+){
+    int output_height = (input_height - pool_size) / stride_height + 1;
+    int output_width = (input_width - pool_size) / stride_width + 1;
+    for(int ic = 0; ic < input_channels; ic++){
+        for(int oh = 0; oh < output_height;oh++){
+            for(int ow = 0; ow < output_width; ow++){
+                float max_value = -999.0;
+                for(int n = 0; n < pool_size; n++){
+                    for(int m = 0; m < pool_size; m++){ 
+                        int ih = oh * stride_height + n;
+                        int iw = ow * stride_width + m;
+                        
+                            int input_idx = (ic * input_height + ih) * input_width + iw;
+                            if(input[input_idx] > max_value){
+                                max_value = input[input_idx];
+                            }
+                        
+                    }
+                }                                                    
+                int output_idx = (ic * output_height + oh) * output_width + ow;
+                output[output_idx] = max_value;
+            }
+        }
+    }
+    
+}
+void fully_connected(float *input, float *weights, float *output, int input_size, int output_size) {
+    for (int i = 0; i < output_size; i++) {
+        output[i] = 0;
+        for (int j = 0; j < input_size; j++) {
+            output[i] += input[j] * weights[i * input_size + j]; // Tính tổng trọng số
+        }
+        //output[i] = relu(output[i]); // Áp dụng ReLU
+    }
+}
+#include <stdio.h>
+
+void flatten_from_hwc_to_whc_flatten(
+    float *input, float *output,
+    int H, int W, int C
+) {
+    int idx = 0;
+    for (int h = 0; h < H; h++) {
+        for (int w = 0; w < W; w++) {
+            for (int c = 0; c < C; c++) {
+                int original_idx = (c * H+ h) * W + w;  // HWC
+                output[idx++] = input[original_idx];     // WHC-flatten
+            }
+        }
+    }
+}
+
+
+void conv2d(
+    const float *input,       // Pointer to input data
+    const float *kernel,      // Pointer to kernel weights
+    const float *bias,        // Pointer to bias (can be NULL)
+    float *output,            // Pointer to output data
+    int input_width,            // Input width
+    int input_height,           // Input height
+    int input_channels,         // Input channels
+    int kernel_width,           // Kernel width
+    int kernel_height,          // Kernel height
+    int output_channels,        // Number of output channels
+    int stride_width,           // Stride width
+    int stride_height,          // Stride height
+    int padding         // Padding type
+)
+{
+    int padding_width = padding;
+    int padding_height = padding;
+    int output_height = (input_height - kernel_height + 2 * padding_height) / stride_height + 1;
+    int output_width = (input_width - kernel_height + 2 * padding_width) / stride_width + 1;
+    
+    for (int oc = 0; oc < output_channels; oc++) {
+        for (int oh = 0; oh < output_height; oh++) {
+            for (int ow = 0; ow < output_width; ow++) {
+                float value = 0; // Output value for the current pixel
+                for (int ic = 0; ic < input_channels; ic++) {
+                    for (int kh = 0; kh < kernel_height; kh++) {
+                        for (int kw = 0; kw < kernel_width; kw++) {
+                            int ih = oh * stride_height + kh - padding_height;
+                            int iw = ow * stride_width + kw - padding_width;
+
+                            // Ensure coordinates are within bounds
+                            if (ih >= 0 && ih < input_height && iw >= 0 && iw < input_width) {
+                                int input_idx = (ic * input_height + ih) * input_width + iw;
+                                int weight_idx = (((oc * input_channels) + ic) * kernel_width + kh) * kernel_height + kw;
+                                value += input[input_idx] * kernel[weight_idx];
+                            }
+                        }
+                    }
+                }
+                int output_idx = (oc * output_height + oh) * output_width + ow;
+                if (bias != NULL) {
+                    output[output_idx] = value + bias[oc];
+                } else {
+                    output[output_idx] = value;
+                }
+            }
+        }
+    }
+}
+void read_from_file(const char *filename, float *array, int size) {
+    FILE *f = fopen(filename, "r");
+    if (!f) {
         printf("Không thể mở file %s\n", filename);
         exit(1);
     }
 
-    // Đọc từng giá trị float từ file và lưu vào mảng
-    for (int i = 0; i < H * W * C; i++) {
-        if (fscanf(file, "%f", &data[i]) != 1) {
-            printf("Lỗi khi đọc file %s\n", filename);
-            fclose(file);
-            exit(1);
-        }
+    for (int i = 0; i < size; i++) {
+        fscanf(f, "%f", &array[i]);
     }
 
-    fclose(file);
+    fclose(f);
 }
 
-// Hàm chuyển đổi dữ liệu từ (channel, row, col) thành (row, col, channel)
-void transpose_data(float *data, float *reshaped_data, int H, int W, int C) {
-    int index = 0;
-    for (int c = 0; c < C; c++) {   // Duyệt qua các kênh (channels)
-        for (int h = 0; h < H; h++) {  // Duyệt qua hàng (rows)
-            for (int w = 0; w < W; w++) {  // Duyệt qua cột (columns)
-                reshaped_data[h * W * C + w * C + c] = data[index++];
-            }
-        }
-    }
-}
+
 
 int main() {
-    // Kích thước dữ liệu
-    int H = 32;  // Số hàng (rows)
-    int W = 32;  // Số cột (columns)
-    int C = 3;  // Số kênh (channels)
+    // ⚙️ Kích thước đầu vào & tham số model
+    const int input_width = 32, input_height = 32, input_channels = 3;
+    const int output_size = 10;
+    const int kernel_size = 3, padding = 1;
+    const int conv1_channels = 32;
+    const int conv2_channels = 64;
+    const int dense1_size = 64;
+    const int flatten_size = 8 * 8 * conv2_channels;  // sau 2 lần pooling
 
-    // Tạo mảng để lưu dữ liệu (channel, row, col)
-    float *data = (float *)malloc(H * W * C * sizeof(float));
+    // ⚙️ Khai báo trọng số (đã được xuất từ Python)
+    float kernel1[kernel_size * kernel_size * input_channels * conv1_channels];
+    float kernel2[kernel_size * kernel_size * conv1_channels * conv2_channels];
+    float weight_dense1[flatten_size * dense1_size];
+    float weight_output[dense1_size * output_size];
 
-    // Đọc dữ liệu từ file vào mảng
-    const char *filename = "data/image_0.txt";  // Đường dẫn đến file dữ liệu
-    read_float_file(filename, data, H, W, C);
+    // ⚙️ Bias = NULL (không dùng)
+    float* bias_null = NULL;
 
-    // Tạo mảng để lưu dữ liệu đã được reshaped (row, col, channel)
-    float *reshaped_data = (float *)malloc(H * W * C * sizeof(float));
+    // ⚙️ Load weights từ file
+    read_from_file("weight/weight/conv1_weight.txt", kernel1, sizeof(kernel1) / sizeof(float));
+    read_from_file("weight/weight/conv2_weight.txt", kernel2, sizeof(kernel2) / sizeof(float));
+    read_from_file("weight/weight/dense1_weight.txt", weight_dense1, sizeof(weight_dense1) / sizeof(float));
+    read_from_file("weight/weight/output_weight.txt", weight_output, sizeof(weight_output) / sizeof(float));
 
-    // Chuyển dữ liệu từ (channel, row, col) thành (row, col, channel)
-    transpose_data(data, reshaped_data, H, W, C);
+    // ⚙️ Buffer cho từng layer
+    float input[32 * 32 * 3];
+    float output_conv1[32 * 32 * conv1_channels];
+    float output_pool1[16 * 16 * conv1_channels];
+    float output_conv2[16 * 16 * conv2_channels];
+    float output_pool2[8 * 8 * conv2_channels];
+    float flatten[8*8*conv2_channels];
+    float output_fc1[dense1_size];
+    float output_fc2[output_size];
 
-    // In dữ liệu sau khi reshaped (hàng, cột, channel)
-    printf("Dữ liệu sau khi reshaped (hàng, cột, channel):\n");
-    for (int h = 0; h < H; h++) {
-        for (int w = 0; w < W; w++) {
-            for (int c = 0; c < C; c++) {
-                printf("%.6f/n ", reshaped_data[h * W * C + w * C + c]);
-            }
-        }
-    }
+    int correct_predictions = 0;
 
-    // Giải phóng bộ nhớ
-    free(data);
-    free(reshaped_data);
+
+        // 🧠 Đọc input & label
+        char input_file[50], label_file[50];
+
+        read_from_file("weight/weight/input_image.txt", input, 32 * 32 * 3);
+        //int true_label = read_label_from_file(label_file);
+
+        // 🧪 Conv1 → ReLU → Pool
+        conv2d(input, kernel1, bias_null, output_conv1,
+               input_width, input_height, input_channels,
+               kernel_size, kernel_size, conv1_channels,
+               1, 1, padding);
+        //transpose_data_whc (output_conv1, output_conv1, 16, 16, conv1_channels);
+        relu(output_conv1, output_conv1, 32 * 32 * conv1_channels);
+        maxpool(output_conv1, output_pool1, 32, 32, conv1_channels, 2, 2, 2);
+
+        // 🧪 Conv2 → ReLU → Pool
+        conv2d(output_pool1, kernel2, bias_null, output_conv2,
+               16, 16, conv1_channels,
+               kernel_size, kernel_size, conv2_channels,
+               1, 1, padding);
+        //transpose_data_whc (output_conv2, output_conv2, 16, 16, conv2_channels);
+        relu(output_conv2, output_conv2, 16 * 16 * conv2_channels);
+        maxpool(output_conv2, output_pool2, 16, 16, conv2_channels, 2, 2, 2);
+
+        // 🧠 Dense1 → ReLU
+        flatten_from_hwc_to_whc_flatten(output_pool2 , flatten, 8, 8, 64) ;
+
+        fully_connected(flatten, weight_dense1, output_fc1, flatten_size, dense1_size);
+        relu(output_fc1, output_fc1, dense1_size);
+ 
+        // 🧠 Output → Softmax
+        fully_connected(output_fc1, weight_output, output_fc2, dense1_size, output_size);
+        softmax(output_fc2, output_fc2, output_size);
+
+        // 🎯 Dự đoán và so sánh
+        // int predicted_label = get_max_label(output_fc2, output_size);
+        // if (predicted_label == true_label)
+        //     correct_predictions++;
+
+       //printf("Image %d - Predict: %d, True: %d\n", i, predicted_label, true_label);
+
+    // printf("\n✅ Accuracy: %.2f%% (%d / 1000 correct)\n",
+    //        (float)correct_predictions / 10.0, correct_predictions);
+        save_float_array_to_txt_file("weight/out_c/conv1_c.txt", output_conv1, 32 * 32 * conv1_channels);
+        save_float_array_to_txt_file("weight/out_c/pool1.txt", output_pool1, 16 * 16 * conv1_channels);
+        save_float_array_to_txt_file("weight/out_c/conv2.txt", output_conv2, 16 * 16 * conv2_channels);
+        save_float_array_to_txt_file("weight/out_c/pool2.txt", flatten, 8 * 8 * conv2_channels);
+        save_float_array_to_txt_file("weight/out_c/dense1.txt", output_fc1, dense1_size);
+        save_float_array_to_txt_file("weight/out_c/output.txt", output_fc2, output_size);
 
     return 0;
 }
+

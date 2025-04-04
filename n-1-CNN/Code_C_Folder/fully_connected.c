@@ -6,6 +6,6 @@ void fully_connected(float *input, float *weights, float *output, int input_size
         for (int j = 0; j < input_size; j++) {
             output[i] += input[j] * weights[i * input_size + j]; // Tính tổng trọng số
         }
-        output[i] = relu(output[i]); // Áp dụng ReLU
+        // output[i] = relu(output[i]); // Áp dụng ReLU
     }
 }

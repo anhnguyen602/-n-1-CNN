@@ -13,25 +13,26 @@ print(f"y_test shape: {y_test.shape}")
 # Chuyển đổi dữ liệu ảnh (0-255) thành giá trị (0-1)
 x_train = x_train / 255.0
 x_test = x_test / 255.0
-
+def save_input_image_hwc(array, path):  # (1, 32, 32, 3) -> (32, 32, 3)
+    H, W, C = array.shape
+    with open(path, 'w') as f:
+        for c in range(C):
+            for h in range(H):
+                for w in range(W):
+                    f.write(f"{array[h, w, c]:.6f}\n")
 # Lưu ảnh và nhãn vào các file .txt
-def save_image_to_txt(image_data, filename):
-    # Mỗi ảnh có kích thước 32x32x3, sẽ được chuyển thành mảng 1 chiều (3072,)
-    image_data = image_data.flatten()
-    np.savetxt(filename, image_data, fmt='%f')
-
 def save_label_to_txt(label, filename):
     with open(filename, 'w') as f:
         f.write(str(label))
 
 # Lưu 1000 ảnh đầu tiên vào các file txt
-for i in range(1000):
-    image_data = x_train[i]
-    label = y_train[i]
+for i in range(10000):
+    image_data = x_test[i]
+    label = y_test[i]
 
     # Lưu ảnh vào file TXT
     image_filename = f"data/image_{i}.txt"
-    save_image_to_txt(image_data, image_filename)
+    save_input_image_hwc(image_data, image_filename)
 
     # Lưu nhãn vào file TXT
     label_filename = f"data/label_{i}.txt"

@@ -2,10 +2,10 @@
 #include<stdio.h>
 #include<stdint.h>
 void conv2d(
-    const int16_t *input,       // Pointer to input data
-    const int16_t *kernel,      // Pointer to kernel weights
-    const int16_t *bias,        // Pointer to bias (can be NULL)
-    int16_t *output,            // Pointer to output data
+    const float *input,       // Pointer to input data
+    const float *kernel,      // Pointer to kernel weights
+    const float *bias,        // Pointer to bias (can be NULL)
+    float *output,            // Pointer to output data
     int input_width,            // Input width
     int input_height,           // Input height
     int input_channels,         // Input channels
