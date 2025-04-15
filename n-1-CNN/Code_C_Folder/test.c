@@ -7,6 +7,31 @@
 // #include "fully_connected.h"
 // #include "maxpool.h"
 // #include "softmax.h"
+#define EPSILON 0.001
+void batchnorm(
+    const float *input,       // Pointer to input data
+    float *output,            // Pointer to output data
+    float *gamma,
+    float *beta,
+    float *mean,
+    float *variance,
+    int input_width,            // Input width
+    int input_height,           // Input height
+    int input_channels         // Input channels
+){
+    for (int c = 0; c < input_channels; c++) {
+        float g = gamma[c];
+        float b = beta[c];
+        float m = mean[c];
+        float v = variance[c];
+        float inv_std = 1.0f/ sqrtf(v + EPSILON);
+        for (int i = 0; i < input_height * input_width; i++){
+            float x = input[i + c *input_height * input_width];
+            float x_hat = (x - m) * inv_std;
+            output[i + c * input_height * input_width] = g * x_hat + b;
+        }
+    }
+}
 void save_float_array_to_txt_file(const char *filename, float *array, int size) {
     FILE *f = fopen(filename, "w");
     if (!f) {
@@ -209,6 +234,18 @@ int main() {
     float kernel2[kernel_size * kernel_size * conv1_channels * conv2_channels];
     float weight_dense1[flatten_size * dense1_size];
     float weight_output[dense1_size * output_size];
+        // ⚙️ Trọng số batchnorm
+    float bn1_gamma[conv1_channels], bn1_beta[conv1_channels], bn1_mean[conv1_channels], bn1_var[conv1_channels];
+    float bn2_gamma[conv2_channels], bn2_beta[conv2_channels], bn2_mean[conv2_channels], bn2_var[conv2_channels];
+    
+        // ⚙️ Buffer output batchnorm
+    float output_bn1[32 * 32 * conv1_channels];
+    float output_bn2[16 * 16 * conv2_channels];
+
+    float output_bn1_raw[32 * 32 * conv1_channels];
+    float output_bn2_raw[16 * 16 * conv2_channels];
+
+    
 
     // ⚙️ Bias = NULL (không dùng)
     float* bias_null = NULL;
@@ -218,6 +255,17 @@ int main() {
     read_from_file("weight/weight/conv2_weight.txt", kernel2, sizeof(kernel2) / sizeof(float));
     read_from_file("weight/weight/dense1_weight.txt", weight_dense1, sizeof(weight_dense1) / sizeof(float));
     read_from_file("weight/weight/output_weight.txt", weight_output, sizeof(weight_output) / sizeof(float));
+    // ⚙️ Đọc weight batchnorm từ file
+    read_from_file("weight/weight/batchnorm1_gamma.txt", bn1_gamma, conv1_channels);
+    read_from_file("weight/weight/batchnorm1_beta.txt", bn1_beta, conv1_channels);
+    read_from_file("weight/weight/batchnorm1_mean.txt", bn1_mean, conv1_channels);
+    read_from_file("weight/weight/batchnorm1_variance.txt", bn1_var, conv1_channels);
+
+    read_from_file("weight/weight/batchnorm2_gamma.txt", bn2_gamma, conv2_channels);
+    read_from_file("weight/weight/batchnorm2_beta.txt", bn2_beta, conv2_channels);
+    read_from_file("weight/weight/batchnorm2_mean.txt", bn2_mean, conv2_channels);
+    read_from_file("weight/weight/batchnorm2_variance.txt", bn2_var, conv2_channels);
+
 
     // ⚙️ Buffer cho từng layer
     float input[32 * 32 * 3];
@@ -238,26 +286,34 @@ int main() {
         read_from_file("weight/weight/input_image.txt", input, 32 * 32 * 3);
         //int true_label = read_label_from_file(label_file);
 
-        // 🧪 Conv1 → ReLU → Pool
+            // 🧪 Conv1 → BatchNorm → ReLU → Pool
         conv2d(input, kernel1, bias_null, output_conv1,
-               input_width, input_height, input_channels,
-               kernel_size, kernel_size, conv1_channels,
-               1, 1, padding);
-        //transpose_data_whc (output_conv1, output_conv1, 16, 16, conv1_channels);
-        relu(output_conv1, output_conv1, 32 * 32 * conv1_channels);
-        maxpool(output_conv1, output_pool1, 32, 32, conv1_channels, 2, 2, 2);
+                input_width, input_height, input_channels,
+                kernel_size, kernel_size, conv1_channels,
+                1, 1, padding);
 
-        // 🧪 Conv2 → ReLU → Pool
+        batchnorm(output_conv1, output_bn1_raw, bn1_gamma, bn1_beta, bn1_mean, bn1_var,
+                32, 32, conv1_channels);
+
+        relu(output_bn1_raw, output_bn1, 32 * 32 * conv1_channels);
+        maxpool(output_bn1, output_pool1, 32, 32, conv1_channels, 2, 2, 2);
+
+
+        // 🧪 Conv2 → BatchNorm → ReLU → Pool
         conv2d(output_pool1, kernel2, bias_null, output_conv2,
-               16, 16, conv1_channels,
-               kernel_size, kernel_size, conv2_channels,
-               1, 1, padding);
-        //transpose_data_whc (output_conv2, output_conv2, 16, 16, conv2_channels);
-        relu(output_conv2, output_conv2, 16 * 16 * conv2_channels);
-        maxpool(output_conv2, output_pool2, 16, 16, conv2_channels, 2, 2, 2);
+            16, 16, conv1_channels,
+            kernel_size, kernel_size, conv2_channels,
+            1, 1, padding);
+
+        batchnorm(output_conv2, output_bn2_raw, bn2_gamma, bn2_beta, bn2_mean, bn2_var,
+            16, 16, conv2_channels);
+
+        relu(output_bn2_raw, output_bn2, 16 * 16 * conv2_channels);
+        maxpool(output_bn2, output_pool2, 16, 16, conv2_channels, 2, 2, 2);
+
 
         // 🧠 Dense1 → ReLU
-        flatten_from_hwc_to_whc_flatten(output_pool2 , flatten, 8, 8, 64) ;
+        flatten_from_hwc_to_whc_flatten(output_pool2 , flatten, 8, 8, 64);
 
         fully_connected(flatten, weight_dense1, output_fc1, flatten_size, dense1_size);
         relu(output_fc1, output_fc1, dense1_size);
@@ -281,6 +337,8 @@ int main() {
         save_float_array_to_txt_file("weight/out_c/pool2.txt", flatten, 8 * 8 * conv2_channels);
         save_float_array_to_txt_file("weight/out_c/dense1.txt", output_fc1, dense1_size);
         save_float_array_to_txt_file("weight/out_c/output.txt", output_fc2, output_size);
+        save_float_array_to_txt_file("weight/out_c/batchnorm1.txt", output_bn1_raw, 32 * 32 * conv1_channels);
+        save_float_array_to_txt_file("weight/out_c/batchnorm2.txt", output_bn2_raw, 16 * 16 * conv2_channels);    
 
     return 0;
 }

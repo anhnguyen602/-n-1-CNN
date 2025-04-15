@@ -7,6 +7,31 @@
 // #include "fully_connected.h"
 // #include "maxpool.h"
 // #include "softmax.h"
+#define EPSILON 0.001
+void batchnorm(
+    const float *input,       // Pointer to input data
+    float *output,            // Pointer to output data
+    float *gamma,
+    float *beta,
+    float *mean,
+    float *variance,
+    int input_width,            // Input width
+    int input_height,           // Input height
+    int input_channels         // Input channels
+){
+    for (int c = 0; c < input_channels; c++) {
+        float g = gamma[c];
+        float b = beta[c];
+        float m = mean[c];
+        float v = variance[c];
+        float inv_std = 1.0f/ sqrtf(v + EPSILON);
+        for (int i = 0; i < input_height * input_width; i++){
+            float x = input[i + c *input_height * input_width ];
+            float x_hat = (x - m) * inv_std;
+            output[i + c * input_height * input_width] = g * x_hat + b;
+        }
+    }
+}
 void flatten_from_hwc_to_whc_flatten(
     float *input, float *output,
     int H, int W, int C
@@ -207,6 +232,10 @@ int main() {
     float weight_dense1[flatten_size * dense1_size];
     float weight_output[dense1_size * output_size];
 
+    float bn1_gamma[conv1_channels], bn1_beta[conv1_channels], bn1_mean[conv1_channels], bn1_variance[conv1_channels];
+    float bn2_gamma[conv2_channels], bn2_beta[conv2_channels], bn2_mean[conv2_channels], bn2_variance[conv2_channels];
+
+
     // ⚙️ Bias = NULL (không dùng)
     float* bias_null = NULL;
 
@@ -215,6 +244,19 @@ int main() {
     read_from_file("weight/weight/conv2_weight.txt", kernel2, sizeof(kernel2) / sizeof(float));
     read_from_file("weight/weight/dense1_weight.txt", weight_dense1, sizeof(weight_dense1) / sizeof(float));
     read_from_file("weight/weight/output_weight.txt", weight_output, sizeof(weight_output) / sizeof(float));
+
+        // BatchNorm 1
+    read_from_file("weight/weight/batchnorm1_gamma.txt", bn1_gamma, conv1_channels);
+    read_from_file("weight/weight/batchnorm1_beta.txt", bn1_beta, conv1_channels);
+    read_from_file("weight/weight/batchnorm1_mean.txt", bn1_mean, conv1_channels);
+    read_from_file("weight/weight/batchnorm1_variance.txt", bn1_variance, conv1_channels);
+
+    // BatchNorm 2
+    read_from_file("weight/weight/batchnorm2_gamma.txt", bn2_gamma, conv2_channels);
+    read_from_file("weight/weight/batchnorm2_beta.txt", bn2_beta, conv2_channels);
+    read_from_file("weight/weight/batchnorm2_mean.txt", bn2_mean, conv2_channels);
+    read_from_file("weight/weight/batchnorm2_variance.txt", bn2_variance, conv2_channels);
+
 
     // ⚙️ Buffer cho từng layer
     float input[32 * 32 * 3];
@@ -225,10 +267,16 @@ int main() {
     float flatten[8*8*conv2_channels];
     float output_fc1[dense1_size];
     float output_fc2[output_size];
+    float output_bn1[32 * 32 * conv1_channels];
+    float output_bn2[16 * 16 * conv2_channels];
+
+    float output_bn1_raw[32 * 32 * conv1_channels];
+    float output_bn2_raw[16 * 16 * conv2_channels];
+
 
     int correct_predictions = 0;
 
-    for (int i = 0; i < 10000; i++) {
+    for (int i = 0; i < 1000; i++) {
         // 🧠 Đọc input & label
         char input_file[50], label_file[50];
         snprintf(input_file, sizeof(input_file), "data/image_%d.txt", i);
@@ -241,30 +289,39 @@ int main() {
 
         // 🧪 Conv1 → ReLU → Pool
         conv2d(input, kernel1, bias_null, output_conv1,
-               input_width, input_height, input_channels,
-               kernel_size, kernel_size, conv1_channels,
-               1, 1, padding);
-        //transpose_data_whc (output_conv1, output_conv1, 16, 16, conv1_channels);
-        relu(output_conv1, output_conv1, 32 * 32 * conv1_channels);
-        maxpool(output_conv1, output_pool1, 32, 32, conv1_channels, 2, 2, 2);
+            input_width, input_height, input_channels,
+            kernel_size, kernel_size, conv1_channels,
+            1, 1, padding);
 
-        // 🧪 Conv2 → ReLU → Pool
-        conv2d(output_pool1, kernel2, bias_null, output_conv2,
-               16, 16, conv1_channels,
-               kernel_size, kernel_size, conv2_channels,
-               1, 1, padding);
-        //transpose_data_whc (output_conv2, output_conv2, 16, 16, conv2_channels);
-        relu(output_conv2, output_conv2, 16 * 16 * conv2_channels);
-        maxpool(output_conv2, output_pool2, 16, 16, conv2_channels, 2, 2, 2);
+    batchnorm(output_conv1, output_bn1_raw, bn1_gamma, bn1_beta, bn1_mean, bn1_variance,
+            32, 32, conv1_channels);
 
-        flatten_from_hwc_to_whc_flatten(output_pool2 , flatten, 8, 8, 64) ;
-        // 🧠 Dense1 → ReLU
-        fully_connected(flatten, weight_dense1, output_fc1, flatten_size, dense1_size);
-        relu(output_fc1, output_fc1, dense1_size);
+    relu(output_bn1_raw, output_bn1, 32 * 32 * conv1_channels);
+    maxpool(output_bn1, output_pool1, 32, 32, conv1_channels, 2, 2, 2);
 
-        // 🧠 Output → Softmax
-        fully_connected(output_fc1, weight_output, output_fc2, dense1_size, output_size);
-        softmax(output_fc2, output_fc2, output_size);
+
+    // 🧪 Conv2 → BatchNorm → ReLU → Pool
+    conv2d(output_pool1, kernel2, bias_null, output_conv2,
+        16, 16, conv1_channels,
+        kernel_size, kernel_size, conv2_channels,
+        1, 1, padding);
+
+    batchnorm(output_conv2, output_bn2_raw, bn2_gamma, bn2_beta, bn2_mean, bn2_variance,
+        16, 16, conv2_channels);
+
+    relu(output_bn2_raw, output_bn2, 16 * 16 * conv2_channels);
+    maxpool(output_bn2, output_pool2, 16, 16, conv2_channels, 2, 2, 2);
+
+
+    // 🧠 Dense1 → ReLU
+    flatten_from_hwc_to_whc_flatten(output_pool2 , flatten, 8, 8, 64);
+
+    fully_connected(flatten, weight_dense1, output_fc1, flatten_size, dense1_size);
+    relu(output_fc1, output_fc1, dense1_size);
+
+    // 🧠 Output → Softmax
+    fully_connected(output_fc1, weight_output, output_fc2, dense1_size, output_size);
+    softmax(output_fc2, output_fc2, output_size);
 
         // 🎯 Dự đoán và so sánh
         int predicted_label = get_max_label(output_fc2, output_size);
@@ -274,7 +331,7 @@ int main() {
         printf("Image %d - Predict: %d, True: %d\n", i, predicted_label, true_label);
     }
 
-    printf("\n✅ Accuracy: %.2f%% (%d / 10000 correct)\n",
+    printf("\n✅ Accuracy: %.2f%% (%d / 1000 correct)\n",
            (float)correct_predictions / 100.0, correct_predictions);
 
     return 0;

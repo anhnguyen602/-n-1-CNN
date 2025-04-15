@@ -162,6 +162,17 @@ void maxpool(
     }
     
 }
+void rotate_filter (double *weight_in, double *weight_out, int weight_height, int weight_channels, int filter){
+    double tmp_array [50000];
+    for (int f = 0; f < filter * weight_channels; f++){
+         for (int j = 0; j < weight_height * weight_height ; j++){
+            tmp_array[j + f*weight_height * weight_height] = weight_in[weight_height * weight_height - 1 - j + f*weight_height * weight_height];
+        }
+    }
+    for (int i = 0; i < weight_height * weight_height * weight_channels * filter; i++){
+        weight_out[i] = tmp_array[i];
+    }
+}
 //maxpool backward
 void maxpool_backward(
     float *grad_output,      // Gradient từ lớp sau
@@ -310,7 +321,8 @@ void conv2d_backward(
 ) {
     int output_height = (input_height - kernel_height + 2 * padding) / stride_height + 1;
     int output_width = (input_width - kernel_width + 2 * padding) / stride_width + 1;
-
+    float *kernel1 = (float*)malloc(kernel_width*kernel_height*output_channels*input_channels * sizeof(float));
+    rotate_filter(kernel, kernel1, kernel_height, input_channels, output_channels);
     // Khởi tạo grad_input và grad_kernel bằng 0
     for (int i = 0; i < input_height * input_width * input_channels; i++) {
         grad_input[i] = 0.0f;
@@ -338,7 +350,7 @@ void conv2d_backward(
                                 // Gradient cho kernel
                                 grad_kernel[weight_idx] += grad * input[input_idx];
                                 // Gradient cho input
-                                grad_input[input_idx] += grad * kernel[weight_idx];
+                                grad_input[input_idx] += grad * kernel1[weight_idx];
                             }
                         }
                     }
@@ -380,10 +392,17 @@ int main() {
     float grad_weight_output[dense1_size * output_size];
 
     // ⚙️ Load weights
-    // read_from_file("weight/weight/conv1_weight.txt", kernel1, sizeof(kernel1) / sizeof(float));
-    // read_from_file("weight/weight/conv2_weight.txt", kernel2, sizeof(kernel2) / sizeof(float));
-    // read_from_file("weight/weight/dense1_weight.txt", weight_dense1, sizeof(weight_dense1) / sizeof(float));
-    // read_from_file("weight/weight/output_weight.txt", weight_output, sizeof(weight_output) / sizeof(float));
+    read_from_file("weight/weight/conv1_weight.txt", kernel1, sizeof(kernel1) / sizeof(float));
+    read_from_file("weight/weight/conv2_weight.txt", kernel2, sizeof(kernel2) / sizeof(float));
+    read_from_file("weight/weight/dense1_weight.txt", weight_dense1, sizeof(weight_dense1) / sizeof(float));
+    read_from_file("weight/weight/output_weight.txt", weight_output, sizeof(weight_output) / sizeof(float));
+
+    FILE *acc_file = fopen("weight/backward_output/accuracy_log.txt", "w");
+    if (!acc_file) {
+        printf("⚠️ Không thể mở file accuracy_log.txt để ghi!\n");
+        return 1;
+    }
+
 
     // ⚙️ Buffers
     float input[32 * 32 * 3];
@@ -409,9 +428,9 @@ int main() {
 
     int correct_predictions = 0;
 
-    for (int epoch = 0; epoch < 10; epoch++) { // Thêm vòng lặp epoch
+    for (int epoch = 0; epoch < 5; epoch++) { // Thêm vòng lặp epoch
         correct_predictions = 0;
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 1000; i++) {
             // 🧠 Đọc input & label
             char input_file[50], label_file[50];
             snprintf(input_file, sizeof(input_file), "data/image_%d.txt", i);
@@ -462,6 +481,7 @@ int main() {
             maxpool_backward(grad_output_pool2, max_indices_pool2, grad_output_conv2,
                              16, 16, conv2_channels, 2, 2, 2);
             relu_backward(grad_output_conv2, output_conv2, grad_output_conv2, 16 * 16 * conv2_channels);
+            
             conv2d_backward(grad_output_conv2, output_pool1, kernel2, grad_output_pool1, grad_kernel2,
                             16, 16, conv1_channels, kernel_size, kernel_size, conv2_channels,
                             1, 1, padding, learning_rate);
@@ -472,11 +492,30 @@ int main() {
                             input_width, input_height, input_channels, kernel_size, kernel_size,
                             conv1_channels, 1, 1, padding, learning_rate);
 
-            printf("Image %d - Predict: %d, True: %d\n", i, predicted_label, true_label);
+           //  printf("Image %d - Predict: %d, True: %d\n", i, predicted_label, true_label);
         }
-        printf("Epoch %d - Accuracy: %.2f%% (%d / 10000 correct)\n",
+        printf("Epoch %d - Accuracy: %.2f%% (%d / 100 correct)\n",
                epoch, (float)correct_predictions / 100.0, correct_predictions);
+        fprintf(acc_file, "%.2f\n", (float)correct_predictions / 100.0);
+
+        
     }
+        // ✅ GHI OUTPUT CỦA CÁC LỚP (FORWARD)
+    // save_float_array_to_txt_file("weight/forward_output/conv1.txt", output_conv1, 32 * 32 * conv1_channels);
+    // save_float_array_to_txt_file("weight/forward_output/pool1.txt", output_pool1, 16 * 16 * conv1_channels);
+    // save_float_array_to_txt_file("weight/forward_output/conv2.txt", output_conv2, 16 * 16 * conv2_channels);
+    // save_float_array_to_txt_file("weight/forward_output/pool2.txt", output_pool2, 8 * 8 * conv2_channels);
+    // save_float_array_to_txt_file("weight/forward_output/flatten.txt", flatten, flatten_size);
+    // save_float_array_to_txt_file("weight/forward_output/dense1.txt", output_fc1, dense1_size);
+    // save_float_array_to_txt_file("weight/forward_output/output.txt", output_fc2, output_size);
+
+    // ✅ GHI GRADIENT CỦA CÁC LỚP (BACKWARD)
+    // ✅ GHI TRỌNG SỐ ĐÃ CẬP NHẬT (SAU BACKPROP)
+    save_float_array_to_txt_file("weight/backward_output/kernel1_updated.txt", kernel1, kernel_size * kernel_size * input_channels * conv1_channels);
+    save_float_array_to_txt_file("weight/backward_output/kernel2_updated.txt", kernel2, kernel_size * kernel_size * conv1_channels * conv2_channels);
+    save_float_array_to_txt_file("weight/backward_output/dense1_weights_updated.txt", weight_dense1, flatten_size * dense1_size);
+    save_float_array_to_txt_file("weight/backward_output/output_weights_updated.txt", weight_output, dense1_size * output_size);
+    fclose(acc_file);
 
     return 0;
 }
