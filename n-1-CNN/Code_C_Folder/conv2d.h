@@ -16,4 +16,7 @@ void conv2d(
     int stride_height,          // Stride height
     int padding 
 );
+{
+    // Thân hàm
+}
 

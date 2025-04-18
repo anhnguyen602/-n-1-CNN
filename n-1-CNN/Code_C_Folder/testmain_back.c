@@ -162,8 +162,8 @@ void maxpool(
     }
     
 }
-void rotate_filter (double *weight_in, double *weight_out, int weight_height, int weight_channels, int filter){
-    double tmp_array [50000];
+void rotate_filter (float *weight_in, float *weight_out, int weight_height, int weight_channels, int filter){
+    float tmp_array [50000];
     for (int f = 0; f < filter * weight_channels; f++){
          for (int j = 0; j < weight_height * weight_height ; j++){
             tmp_array[j + f*weight_height * weight_height] = weight_in[weight_height * weight_height - 1 - j + f*weight_height * weight_height];
@@ -307,7 +307,11 @@ void read_from_file(const char *filename, float *array, int size) {
 
     fclose(file);
 }
-
+void init_random_array(float *array, int size) {
+    for (int i = 0; i < size; ++i) {
+        array[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;  // từ -1.0 đến 1.0
+    }
+}
 void conv2d_backward(
     float *grad_output,      // Gradient từ lớp sau
     float *input,            // Input của Conv2D từ forward
@@ -397,13 +401,16 @@ int main() {
     read_from_file("weight/weight/dense1_weight.txt", weight_dense1, sizeof(weight_dense1) / sizeof(float));
     read_from_file("weight/weight/output_weight.txt", weight_output, sizeof(weight_output) / sizeof(float));
 
+    // init_random_array(kernel1, sizeof(kernel1) / sizeof(float));
+    // init_random_array(kernel2, sizeof(kernel2) / sizeof(float));
+    // init_random_array(weight_dense1, sizeof(weight_dense1) / sizeof(float));
+    // init_random_array(weight_output, sizeof(weight_output) / sizeof(float));
+
     FILE *acc_file = fopen("weight/backward_output/accuracy_log.txt", "w");
     if (!acc_file) {
         printf("⚠️ Không thể mở file accuracy_log.txt để ghi!\n");
         return 1;
     }
-
-
     // ⚙️ Buffers
     float input[32 * 32 * 3];
     float output_conv1[32 * 32 * conv1_channels];
@@ -413,6 +420,7 @@ int main() {
     float flatten[8 * 8 * conv2_channels];
     float output_fc1[dense1_size];
     float output_fc2[output_size];
+    float output [output_size];
     int max_indices_pool1[16 * 16 * conv1_channels];
     int max_indices_pool2[8 * 8 * conv2_channels];
 
@@ -428,9 +436,9 @@ int main() {
 
     int correct_predictions = 0;
 
-    for (int epoch = 0; epoch < 5; epoch++) { // Thêm vòng lặp epoch
+    for (int epoch = 0; epoch < 10; epoch++) { // Thêm vòng lặp epoch
         correct_predictions = 0;
-        for (int i = 0; i < 1000; i++) {
+        for (int i = 0; i < 10000; i++) {
             // 🧠 Đọc input & label
             char input_file[50], label_file[50];
             snprintf(input_file, sizeof(input_file), "data/image_%d.txt", i);
@@ -459,10 +467,10 @@ int main() {
             fully_connected(flatten, weight_dense1, output_fc1, flatten_size, dense1_size);
             relu(output_fc1, output_fc1, dense1_size);
             fully_connected(output_fc1, weight_output, output_fc2, dense1_size, output_size);
-            softmax(output_fc2, output_fc2, output_size);
+            softmax(output_fc2, output, output_size);
 
             // 🎯 Dự đoán
-            int predicted_label = get_max_label(output_fc2, output_size);
+            int predicted_label = get_max_label(output, output_size);
             if (predicted_label == true_label)
                 correct_predictions++;
 
@@ -471,7 +479,7 @@ int main() {
             memset(y_true, 0, sizeof(y_true)); // Gán tất cả phần tử về 0
             
             y_true[true_label] = 1.0f;
-            softmax_cross_entropy_derivative(output_fc2, y_true, grad_output_fc2, output_size);
+            softmax_cross_entropy_derivative(output, y_true, grad_output_fc2, output_size);
             fully_connected_backward(grad_output_fc2, output_fc1, weight_output, grad_output_fc1,
                                     grad_weight_output, dense1_size, output_size, learning_rate);
             relu_backward(grad_output_fc1, output_fc1, grad_output_fc1, dense1_size);
@@ -492,11 +500,11 @@ int main() {
                             input_width, input_height, input_channels, kernel_size, kernel_size,
                             conv1_channels, 1, 1, padding, learning_rate);
 
-           //  printf("Image %d - Predict: %d, True: %d\n", i, predicted_label, true_label);
+           printf("Epoch: %d Image %d - Predict: %d, True: %d\n",epoch, i, predicted_label, true_label);
         }
         printf("Epoch %d - Accuracy: %.2f%% (%d / 100 correct)\n",
-               epoch, (float)correct_predictions / 100.0, correct_predictions);
-        fprintf(acc_file, "%.2f\n", (float)correct_predictions / 100.0);
+               epoch, (float)correct_predictions / 10.0, correct_predictions);
+        fprintf(acc_file, "%.2f\n", (float)correct_predictions / 10.0);
 
         
     }

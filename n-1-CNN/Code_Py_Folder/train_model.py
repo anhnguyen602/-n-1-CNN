@@ -1,20 +1,47 @@
 import tensorflow as tf
 import numpy as np
+def read_decimal_file_weight(filename, shape):
+    with open(filename, "r") as file:
+        # Đọc từng dòng, chuyển sang float (hoặc int nếu bạn muốn)
+        values = [float(x.strip()) for x in file.readlines()]
+    
+    # Kiểm tra số phần tử có đúng với shape mong muốn không
+    expected = np.prod(shape)
+    if len(values) != expected:
+        raise ValueError(f"Số lượng phần tử ({len(values)}) không khớp với shape {shape} ({expected} phần tử).")
+    
+    H, W, C, F = shape
+    reshaped_data = np.zeros((H, W, C, F), dtype=np.float32)
+
+    index = 0
+    for f in range(F):
+        for c in range(C):
+            for h in range(H):
+                for w in range(W):
+                    reshaped_data[h, w, c, f] = values[index]
+                    index += 1
+
+    return reshaped_data
 
 # Load dữ liệu CIFAR-10
 (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
 x_train, x_test = x_train / 255.0, x_test / 255.0
+# Lấy 10.000 ảnh đầu từ tập train
+x_train_subset = x_train[:10000]
+y_train_subset = y_train[:10000]
+
+# Train với dữ liệu đã cắt
 
 # Định nghĩa mô hình KHÔNG sử dụng bias và KHÔNG dùng activation trực tiếp trong Conv/Dense
 model = tf.keras.Sequential([
     tf.keras.layers.Conv2D(32, (3, 3), use_bias=False, name='conv1', input_shape=(32, 32, 3), padding='same'),
-    tf.keras.layers.BatchNormalization(name='batchnorm1'),
+    # tf.keras.layers.BatchNormalization(name='batchnorm1'),
     tf.keras.layers.Activation('relu', name='relu1'),
 
     tf.keras.layers.MaxPooling2D((2, 2), name='pool1'),
 
     tf.keras.layers.Conv2D(64, (3, 3), use_bias=False, name='conv2', padding='same'),
-    tf.keras.layers.BatchNormalization(name='batchnorm2'),
+    #tf.keras.layers.BatchNormalization(name='batchnorm2'),
     tf.keras.layers.Activation('relu', name='relu2'),
 
     tf.keras.layers.MaxPooling2D((2, 2), name='pool2'),
@@ -26,10 +53,10 @@ model = tf.keras.Sequential([
 ])
 
 # Compile và train
-model.compile(optimizer='adam',
+model.compile(optimizer='sgd',
               loss='sparse_categorical_crossentropy',
               metrics=['accuracy'])
-model.fit(x_train, y_train, epochs=5, validation_data=(x_test, y_test))
+model.fit(x_train_subset, y_train_subset, epochs=5, batch_size=1, validation_data=(x_test, y_test))
 model.summary()
 
 # ============================================
@@ -102,19 +129,19 @@ def save_array_to_file(array, path):
         for val in array:
             f.write(f"{val:.6f}\n")
 
-batchnorm_layers = [
-    model.get_layer('batchnorm1'),
-    model.get_layer('batchnorm2')
-]
+# batchnorm_layers = [
+#     model.get_layer('batchnorm1'),
+#     model.get_layer('batchnorm2')
+# ]
 
 batchnorm_names = ['batchnorm1', 'batchnorm2']
 
-for layer, name in zip(batchnorm_layers, batchnorm_names):
-    gamma, beta, moving_mean, moving_variance = layer.get_weights()
-    save_array_to_file(gamma, f"weight/weight/{name}_gamma.txt")
-    save_array_to_file(beta, f"weight/weight/{name}_beta.txt")
-    save_array_to_file(moving_mean, f"weight/weight/{name}_mean.txt")
-    save_array_to_file(moving_variance, f"weight/weight/{name}_variance.txt")
+# for layer, name in zip(batchnorm_layers, batchnorm_names):
+#     gamma, beta, moving_mean, moving_variance = layer.get_weights()
+#     save_array_to_file(gamma, f"weight/weight/{name}_gamma.txt")
+#     save_array_to_file(beta, f"weight/weight/{name}_beta.txt")
+#     save_array_to_file(moving_mean, f"weight/weight/{name}_mean.txt")
+#     save_array_to_file(moving_variance, f"weight/weight/{name}_variance.txt")
 
 # ============================================
 # ✅ Ghi output của các lớp chính
@@ -135,10 +162,10 @@ def save_output_hwcf(array, path):
 
 output_layers = [
     model.get_layer('conv1').output,
-    model.get_layer('batchnorm1').output,
+    # model.get_layer('batchnorm1').output,
     model.get_layer('pool1').output,
     model.get_layer('conv2').output,
-    model.get_layer('batchnorm2').output,
+    # model.get_layer('batchnorm2').output,
     model.get_layer('pool2').output,
     model.get_layer('flatten').output,
     model.get_layer('dense1').output,
@@ -150,10 +177,10 @@ outputs = intermediate_model.predict(sample_image)
 
 output_paths_txt = [
     "weight/out/conv1_output.txt",
-    "weight/out/batchnorm1_output.txt",
+    # "weight/out/batchnorm1_output.txt",
     "weight/out/pool1_output.txt",
     "weight/out/conv2_output.txt",
-    "weight/out/batchnorm2_output.txt",
+    # "weight/out/batchnorm2_output.txt",
     "weight/out/pool2_output.txt",
     "weight/out/flatten_output.txt",
     "weight/out/dense1_output.txt",

@@ -267,6 +267,7 @@ int main() {
     float flatten[8*8*conv2_channels];
     float output_fc1[dense1_size];
     float output_fc2[output_size];
+    float output_softmax [output_size];
     float output_bn1[32 * 32 * conv1_channels];
     float output_bn2[16 * 16 * conv2_channels];
 
@@ -321,10 +322,10 @@ int main() {
 
     // 🧠 Output → Softmax
     fully_connected(output_fc1, weight_output, output_fc2, dense1_size, output_size);
-    softmax(output_fc2, output_fc2, output_size);
+    softmax(output_fc2, output_softmax, output_size);
 
         // 🎯 Dự đoán và so sánh
-        int predicted_label = get_max_label(output_fc2, output_size);
+        int predicted_label = get_max_label(output_softmax, output_size);
         if (predicted_label == true_label)
             correct_predictions++;
 
