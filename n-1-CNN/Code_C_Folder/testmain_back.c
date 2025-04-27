@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
+#define EPSILON 0.001
 // #include "conv2d.h"
 // #include "relu.h"
 // #include "fully_connected.h"
@@ -368,7 +369,89 @@ void conv2d_backward(
         kernel[i] -= learning_rate * grad_kernel[i];
     }
 }
+void batchnorm(
+    const float *input,       // Pointer to input data
+    float *output,            // Pointer to output data
+    float *gamma,
+    float *beta,
+    float *mean,
+    float *variance,
+    int input_width,            // Input width
+    int input_height,           // Input height
+    int input_channels         // Input channels
+){
+    for (int c = 0; c < input_channels; c++) {
+        float g = gamma[c];
+        float b = beta[c];
+        float m = mean[c];
+        float v = variance[c];
+        float inv_std = 1.0f/ sqrtf(v + EPSILON);
+        for (int i = 0; i < input_height * input_width; i++){
+            float x = input[i + c *input_height * input_width ];
+            float x_hat = (x - m) * inv_std;
+            output[i + c * input_height * input_width] = g * x_hat + b;
+        }
+    }
+}
 
+void batchnorm_backward(
+    const float *input,             // input xi  
+    float *dL_dy,                    // grad_L_yi input cua batchNorm
+    float *gamma,
+    float *beta,                     // gamma, beta
+    float * mean,
+    float *varience,
+    int batch_size,
+    float *output,                 // dL/dxi
+    int input_width,
+    int input_height,
+    int input_channels
+){
+    int m = input_height * input_width * batch_size;
+   // float dL_dxi[input_channels*input_height*input_width*batch_size] = {0};
+    float dL_dgamma[input_channels] ;
+    float dL_dBeta[input_channels];
+    float dL_dhat_xi[input_channels*input_height*input_width*batch_size] ;
+    float dL_dsigma_B_binh[input_channels]  ;
+    float dL_d_mu_B[input_channels];
+   // tinh dL_dgamma, dL_dBeta
+    for (int i = 0; i< input_channels; i++){
+        int index_of_mu_thu_i = i*input_height*input_width;         // xac dinh vi tri bat dau cua kenh thu i cua moi batch
+        float sum_dL_dy_gamma = 0.0f;
+        float sum_dL_dy_Beta = 0.0f;
+        float sum_sigma_B_binh = 0.0f;
+        float sum_dL_hat_xi = 0.0f;
+        float d_sigma_B_binh_d_muB = 0.0f;
+        for (int j = 0; j< batch_size;j++){
+            int index_start_of_channels = j *input_height*input_width*input_channels + index_of_mu_thu_i;          // xac dinh vi tri cua kennh thu i cua batch thu j
+            for (int k = 0; k <  input_height*input_width; k++){
+                float hat_xi = (input[k + index_start_of_channels] - mean[i]) / (sqrt(varience[i]*varience[i] + EPSILON));
+                sum_dL_dy_gamma += dL_dy[k+index_start_of_channels] * hat_xi;
+                sum_dL_dy_Beta += dL_dy[k + index_start_of_channels];
+                dL_dhat_xi[k + index_start_of_channels] = dL_dy[k+index_start_of_channels]*gamma[i];
+                sum_sigma_B_binh += dL_dhat_xi[k + index_start_of_channels] *(input[index_start_of_channels + k]- mean[i]); 
+                sum_dL_hat_xi += dL_dhat_xi[k + index_start_of_channels];
+                d_sigma_B_binh_d_muB += (1/(m)) * (-2)* (input[k + index_start_of_channels] - mean[i]);
+            }
+        }
+        dL_dgamma[i] = sum_dL_dy_gamma;
+        dL_dBeta[i] = sum_dL_dy_Beta;
+        dL_dsigma_B_binh[i] = sum_sigma_B_binh* (-0.5)* (1/sqrt((varience[i] *varience[i] + EPSILON)*(varience[i] *varience[i] + EPSILON)*(varience[i] *varience[i] + EPSILON)));
+        dL_d_mu_B[i] = sum_dL_hat_xi* (-1/sqrt(varience[i] * varience[i] + EPSILON ) ) + dL_dsigma_B_binh[i] * d_sigma_B_binh_d_muB;
+
+    }   
+    // inh dL_dxi(output)
+    for (int i = 0; i< input_channels; i++){
+        int index_of_mu_thu_i = i*input_height*input_width;         // xac dinh vi tri bat dau cua kenh thu i cua moi batch
+        for (int j = 0; j< batch_size;j++){
+            int index_start_of_chanels = j *input_height*input_width*input_channels + index_of_mu_thu_i;          // xac dinh vi tri cua kennh thu i cua batch thu j
+            for (int k = 0; k< input_height*input_width; k++){
+               output[k + index_start_of_chanels] = dL_dhat_xi[k + index_start_of_chanels] * 1/(sqrt(varience[i] * varience[i] + EPSILON)) + dL_dsigma_B_binh[i] * 1/m * 2*(input[k + index_start_of_chanels]) + dL_d_mu_B[i] * 1/m;
+            }
+        }
+    }
+
+}
 
 int main() {
     printf("⚙️ Bắt đầu chạy model...\n");
@@ -388,6 +471,20 @@ int main() {
     float weight_dense1[flatten_size * dense1_size];
     float weight_output[dense1_size * output_size];
     float* bias_null = NULL;
+
+    float bn1_gamma[conv1_channels], bn1_beta[conv1_channels], bn1_mean[conv1_channels], bn1_variance[conv1_channels];
+    float bn2_gamma[conv2_channels], bn2_beta[conv2_channels], bn2_mean[conv2_channels], bn2_variance[conv2_channels];
+
+    read_from_file("weight/weight/batchnorm1_gamma.txt", bn1_gamma, conv1_channels);
+    read_from_file("weight/weight/batchnorm1_beta.txt", bn1_beta, conv1_channels);
+    read_from_file("weight/weight/batchnorm1_mean.txt", bn1_mean, conv1_channels);
+    read_from_file("weight/weight/batchnorm1_variance.txt", bn1_variance, conv1_channels);
+
+    // BatchNorm 2
+    read_from_file("weight/weight/batchnorm2_gamma.txt", bn2_gamma, conv2_channels);
+    read_from_file("weight/weight/batchnorm2_beta.txt", bn2_beta, conv2_channels);
+    read_from_file("weight/weight/batchnorm2_mean.txt", bn2_mean, conv2_channels);
+    read_from_file("weight/weight/batchnorm2_variance.txt", bn2_variance, conv2_channels);
 
     // ⚙️ Gradient buffers
     float grad_kernel1[kernel_size * kernel_size * input_channels * conv1_channels];
@@ -424,6 +521,9 @@ int main() {
     int max_indices_pool1[16 * 16 * conv1_channels];
     int max_indices_pool2[8 * 8 * conv2_channels];
 
+    float buffer_output_conv1[32*32*conv1_channels];
+    float buffer_output_conv2[16*16*conv2_channels];
+
     // ⚙️ Gradient buffers cho backward
     float grad_output_fc2[output_size];
     float grad_output_fc1[dense1_size];
@@ -432,11 +532,14 @@ int main() {
     float grad_output_conv2[16 * 16 * conv2_channels];
     float grad_output_pool1[16 * 16 * conv1_channels];
     float grad_output_conv1[32 * 32 * conv1_channels];
-    float grad_input[32 * 32 * 3];
+    float grad_input[32 * 32 * 3];  
+    float grad_output_batchnorm2[16*16*conv2_channels];
+    float grad_output_batchnorm1[32*32*conv1_channels];
+
 
     int correct_predictions = 0;
 
-    for (int epoch = 0; epoch < 10; epoch++) { // Thêm vòng lặp epoch
+    for (int epoch = 0; epoch < 1; epoch++) { // Thêm vòng lặp epoch
         correct_predictions = 0;
         for (int i = 0; i < 10000; i++) {
             // 🧠 Đọc input & label
@@ -451,6 +554,13 @@ int main() {
                    input_width, input_height, input_channels,
                    kernel_size, kernel_size, conv1_channels,
                    1, 1, padding);
+
+            // lay input cho batch norm
+            for (int i = 0; i< 32*32*conv1_channels; i++){
+                buffer_output_conv1[i] = output_conv1[i];
+            }
+            //
+            batchnorm(output_conv1, output_conv1, bn1_gamma, bn1_beta, bn1_mean, bn1_variance, input_width, input_height, input_channels);
             relu(output_conv1, output_conv1, 32 * 32 * conv1_channels);
             maxpool(output_conv1, output_pool1, max_indices_pool1,
                     32, 32, conv1_channels, 2, 2, 2);
@@ -459,6 +569,10 @@ int main() {
                    16, 16, conv1_channels,
                    kernel_size, kernel_size, conv2_channels,
                    1, 1, padding);
+            for (int i = 0; i< 16*16*conv2_channels; i++){
+                    buffer_output_conv2[i] = output_conv2[i];
+                }
+            batchnorm(output_conv2, output_conv2, bn2_gamma, bn2_beta, bn2_mean, bn2_variance, 16, 16, conv2_channels);
             relu(output_conv2, output_conv2, 16 * 16 * conv2_channels);
             maxpool(output_conv2, output_pool2, max_indices_pool2,
                     16, 16, conv2_channels, 2, 2, 2);
@@ -489,14 +603,16 @@ int main() {
             maxpool_backward(grad_output_pool2, max_indices_pool2, grad_output_conv2,
                              16, 16, conv2_channels, 2, 2, 2);
             relu_backward(grad_output_conv2, output_conv2, grad_output_conv2, 16 * 16 * conv2_channels);
-            
-            conv2d_backward(grad_output_conv2, output_pool1, kernel2, grad_output_pool1, grad_kernel2,
+
+            batchnorm_backward(buffer_output_conv2, grad_output_conv2, bn1_gamma, bn1_beta, bn1_mean, bn1_variance, 1, grad_output_batchnorm2,16, 16,64);
+            conv2d_backward(grad_output_batchnorm2, output_pool1, kernel2, grad_output_pool1, grad_kernel2,
                             16, 16, conv1_channels, kernel_size, kernel_size, conv2_channels,
                             1, 1, padding, learning_rate);
             maxpool_backward(grad_output_pool1, max_indices_pool1, grad_output_conv1,
                              32, 32, conv1_channels, 2, 2, 2);
             relu_backward(grad_output_conv1, output_conv1, grad_output_conv1, 32 * 32 * conv1_channels);
-            conv2d_backward(grad_output_conv1, input, kernel1, grad_input, grad_kernel1,
+            batchnorm_backward(buffer_output_conv1, grad_output_conv1, bn2_gamma, bn2_beta, bn2_mean, bn2_variance, 1, grad_output_batchnorm1,32, 32,conv1_channels);
+            conv2d_backward(grad_output_batchnorm1, input, kernel1, grad_input, grad_kernel1,
                             input_width, input_height, input_channels, kernel_size, kernel_size,
                             conv1_channels, 1, 1, padding, learning_rate);
 
