@@ -326,8 +326,7 @@ void conv2d_backward(
 ) {
     int output_height = (input_height - kernel_height + 2 * padding) / stride_height + 1;
     int output_width = (input_width - kernel_width + 2 * padding) / stride_width + 1;
-    float *kernel1 = (float*)malloc(kernel_width*kernel_height*output_channels*input_channels * sizeof(float));
-    rotate_filter(kernel, kernel1, kernel_height, input_channels, output_channels);
+    
     // Khởi tạo grad_input và grad_kernel bằng 0
     for (int i = 0; i < input_height * input_width * input_channels; i++) {
         grad_input[i] = 0.0f;
@@ -355,7 +354,7 @@ void conv2d_backward(
                                 // Gradient cho kernel
                                 grad_kernel[weight_idx] += grad * input[input_idx];
                                 // Gradient cho input
-                                grad_input[input_idx] += grad * kernel1[weight_idx];
+                                grad_input[input_idx] += grad * kernel[weight_idx];
                             }
                         }
                     }
@@ -459,7 +458,7 @@ int main() {
     const int input_width = 32, input_height = 32, input_channels = 3;
     const int output_size = 10;
     const int kernel_size = 3, padding = 1;
-    const int conv1_channels = 32;
+    const int conv1_channels = 32; //
     const int conv2_channels = 64;
     const int dense1_size = 64;
     const int flatten_size = 8 * 8 * conv2_channels;
@@ -517,7 +516,13 @@ int main() {
     float flatten[8 * 8 * conv2_channels];
     float output_fc1[dense1_size];
     float output_fc2[output_size];
-    float output [output_size];
+    float output_fc3[output_size];
+    float output_bn1[32 * 32 * conv1_channels];
+    float output_bn2[16 * 16 * conv2_channels];
+
+    float output_bn1_raw[32 * 32 * conv1_channels];
+    float output_bn2_raw[16 * 16 * conv2_channels];
+
     int max_indices_pool1[16 * 16 * conv1_channels];
     int max_indices_pool2[8 * 8 * conv2_channels];
 
@@ -538,10 +543,22 @@ int main() {
 
 
     int correct_predictions = 0;
+    FILE *log_file = fopen("log_model.txt", "w"); // dùng "a" nếu muốn ghi tiếp mỗi lần chạy
+if (!log_file) {
+    printf("⚠️ Không thể mở file log_model.txt!\n");
+    return 1;
+}
 
-    for (int epoch = 0; epoch < 1; epoch++) { // Thêm vòng lặp epoch
+FILE *file_output_log = fopen("weight/forward_output/all_outputs.txt", "a"); // mở theo chế độ "a" để ghi tiếp
+if (!file_output_log) {
+    printf("⚠️ Không thể mở file để ghi log!\n");
+    return 1;
+}
+
+    //quá trình train
+    for (int epoch = 0; epoch < 5; epoch++) { // Thêm vòng lặp epoch
         correct_predictions = 0;
-        for (int i = 0; i < 10000; i++) {
+        for (int i = 0; i < 6000; i++) {
             // 🧠 Đọc input & label
             char input_file[50], label_file[50];
             snprintf(input_file, sizeof(input_file), "data/image_%d.txt", i);
@@ -579,12 +596,18 @@ int main() {
 
             flatten_from_hwc_to_whc_flatten(output_pool2, flatten, 8, 8, conv2_channels);
             fully_connected(flatten, weight_dense1, output_fc1, flatten_size, dense1_size);
+            fprintf(file_output_log, "Grad_input: ");
+            for (int j = 0; j < 64 * output_size; j++) {
+                fprintf(file_output_log, " %f", output_fc1[j]);
+            }
+             
+             fprintf(file_output_log, "\n");
             relu(output_fc1, output_fc1, dense1_size);
             fully_connected(output_fc1, weight_output, output_fc2, dense1_size, output_size);
-            softmax(output_fc2, output, output_size);
+            softmax(output_fc2, output_fc3, output_size);
 
             // 🎯 Dự đoán
-            int predicted_label = get_max_label(output, output_size);
+            int predicted_label = get_max_label(output_fc3, output_size);
             if (predicted_label == true_label)
                 correct_predictions++;
 
@@ -593,7 +616,7 @@ int main() {
             memset(y_true, 0, sizeof(y_true)); // Gán tất cả phần tử về 0
             
             y_true[true_label] = 1.0f;
-            softmax_cross_entropy_derivative(output, y_true, grad_output_fc2, output_size);
+            softmax_cross_entropy_derivative(output_fc3, y_true, grad_output_fc2, output_size);
             fully_connected_backward(grad_output_fc2, output_fc1, weight_output, grad_output_fc1,
                                     grad_weight_output, dense1_size, output_size, learning_rate);
             relu_backward(grad_output_fc1, output_fc1, grad_output_fc1, dense1_size);
@@ -616,11 +639,11 @@ int main() {
                             input_width, input_height, input_channels, kernel_size, kernel_size,
                             conv1_channels, 1, 1, padding, learning_rate);
 
-           printf("Epoch: %d Image %d - Predict: %d, True: %d\n",epoch, i, predicted_label, true_label);
+           //  printf("Image %d - Predict: %d, True: %d\n", i, predicted_label, true_label);
         }
         printf("Epoch %d - Accuracy: %.2f%% (%d / 100 correct)\n",
-               epoch, (float)correct_predictions / 10.0, correct_predictions);
-        fprintf(acc_file, "%.2f\n", (float)correct_predictions / 10.0);
+               epoch, (float)correct_predictions / 100.0, correct_predictions);
+        fprintf(acc_file, "%.2f\n", (float)correct_predictions / 100.0);
 
         
     }
@@ -635,11 +658,9 @@ int main() {
 
     // ✅ GHI GRADIENT CỦA CÁC LỚP (BACKWARD)
     // ✅ GHI TRỌNG SỐ ĐÃ CẬP NHẬT (SAU BACKPROP)
-    save_float_array_to_txt_file("weight/backward_output/kernel1_updated.txt", kernel1, kernel_size * kernel_size * input_channels * conv1_channels);
-    save_float_array_to_txt_file("weight/backward_output/kernel2_updated.txt", kernel2, kernel_size * kernel_size * conv1_channels * conv2_channels);
-    save_float_array_to_txt_file("weight/backward_output/dense1_weights_updated.txt", weight_dense1, flatten_size * dense1_size);
-    save_float_array_to_txt_file("weight/backward_output/output_weights_updated.txt", weight_output, dense1_size * output_size);
+    fclose(file_output_log);
     fclose(acc_file);
+    fclose(log_file);
 
     return 0;
 }
