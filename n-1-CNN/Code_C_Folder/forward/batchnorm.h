@@ -1,3 +1,5 @@
+#ifndef BATCHNORM_H
+#define BATCHNORM_H
 #include <stdlib.h>
 #include <math.h>
 void batchnorm(

@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
-#define EPSILON 0.001
 // #include "conv2d.h"
 // #include "relu.h"
 // #include "fully_connected.h"
@@ -163,8 +162,8 @@ void maxpool(
     }
     
 }
-void rotate_filter (float *weight_in, float *weight_out, int weight_height, int weight_channels, int filter){
-    float tmp_array [50000];
+void rotate_filter (double *weight_in, double *weight_out, int weight_height, int weight_channels, int filter){
+    double tmp_array [50000];
     for (int f = 0; f < filter * weight_channels; f++){
          for (int j = 0; j < weight_height * weight_height ; j++){
             tmp_array[j + f*weight_height * weight_height] = weight_in[weight_height * weight_height - 1 - j + f*weight_height * weight_height];
@@ -308,11 +307,7 @@ void read_from_file(const char *filename, float *array, int size) {
 
     fclose(file);
 }
-void init_random_array(float *array, int size) {
-    for (int i = 0; i < size; ++i) {
-        array[i] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;  // từ -1.0 đến 1.0
-    }
-}
+
 void conv2d_backward(
     float *grad_output,      // Gradient từ lớp sau
     float *input,            // Input của Conv2D từ forward
@@ -368,92 +363,6 @@ void conv2d_backward(
         kernel[i] -= learning_rate * grad_kernel[i];
     }
 }
-void batchnorm(
-    const float *input,       // Pointer to input data
-    float *output,            // Pointer to output data
-    float *gamma,
-    float *beta,
-    float *mean,
-    float *variance,
-    int input_width,            // Input width
-    int input_height,           // Input height
-    int input_channels         // Input channels
-){
-    for (int c = 0; c < input_channels; c++) {
-        float g = gamma[c];
-        float b = beta[c];
-        float m = mean[c];
-        float v = variance[c];
-        float inv_std = 1.0f/ sqrtf(v + EPSILON);
-        for (int i = 0; i < input_height * input_width; i++){
-            float x = input[i + c *input_height * input_width ];
-            float x_hat = (x - m) * inv_std;
-            output[i + c * input_height * input_width] = g * x_hat + b;
-        }
-    }
-}
-
-void batchnorm_backward(
-    const float *input,             // input xi  
-    float *dL_dy,                    // grad_L_yi input cua batchNorm
-    float learning_rate,
-    float *gamma,
-    float *beta,                     // gamma, beta
-    float * mean,
-    float *varience,
-    int batch_size,
-    float *output,                 // dL/dxi
-    int input_width,
-    int input_height,
-    int input_channels
-){
-    int m = input_height * input_width * batch_size;
-   // float dL_dxi[input_channels*input_height*input_width*batch_size] = {0};
-    float dL_dgamma[input_channels] ;
-    float dL_dBeta[input_channels];
-    float dL_dhat_xi[input_channels*input_height*input_width*batch_size] ;
-    float dL_dsigma_B_binh[input_channels]  ;
-    float dL_d_mu_B[input_channels];
-   // tinh dL_dgamma, dL_dBeta
-    for (int i = 0; i< input_channels; i++){
-        int index_of_mu_thu_i = i*input_height*input_width;         // xac dinh vi tri bat dau cua kenh thu i cua moi batch
-        float sum_dL_dy_gamma = 0.0f;
-        float sum_dL_dy_Beta = 0.0f;
-        float sum_sigma_B_binh = 0.0f;
-        float sum_dL_hat_xi = 0.0f;
-        float d_sigma_B_binh_d_muB = 0.0f;
-        for (int j = 0; j< batch_size;j++){
-            int index_start_of_channels = j *input_height*input_width*input_channels + index_of_mu_thu_i;          // xac dinh vi tri cua kennh thu i cua batch thu j
-            for (int k = 0; k <  input_height*input_width; k++){
-                float hat_xi = (input[k + index_start_of_channels] - mean[i]) / (sqrt(varience[i]*varience[i] + EPSILON));
-                sum_dL_dy_gamma += dL_dy[k+index_start_of_channels] * hat_xi;
-                sum_dL_dy_Beta += dL_dy[k + index_start_of_channels];
-                dL_dhat_xi[k + index_start_of_channels] = dL_dy[k+index_start_of_channels]*gamma[i];
-                sum_sigma_B_binh += dL_dhat_xi[k + index_start_of_channels] *(input[index_start_of_channels + k]- mean[i]); 
-                sum_dL_hat_xi += dL_dhat_xi[k + index_start_of_channels];
-                d_sigma_B_binh_d_muB += (1/(m)) * (-2)* (input[k + index_start_of_channels] - mean[i]);
-            }
-        }
-        dL_dgamma[i] = sum_dL_dy_gamma;
-        dL_dBeta[i] = sum_dL_dy_Beta;
-        dL_dsigma_B_binh[i] = sum_sigma_B_binh* (-0.5)* (1/sqrt((varience[i] *varience[i] + EPSILON)*(varience[i] *varience[i] + EPSILON)*(varience[i] *varience[i] + EPSILON)));
-        dL_d_mu_B[i] = sum_dL_hat_xi* (-1/sqrt(varience[i] * varience[i] + EPSILON ) ) + dL_dsigma_B_binh[i] * d_sigma_B_binh_d_muB;
-        gamma[i] = gamma[i] - learning_rate*dL_dgamma[i];
-        beta[i] = beta[i]- learning_rate*dL_dBeta[i];
- 
-    }   
-    // inh dL_dxi(output)
-    for (int i = 0; i< input_channels; i++){
-        int index_of_mu_thu_i = i*input_height*input_width;         // xac dinh vi tri bat dau cua kenh thu i cua moi batch
-        for (int j = 0; j< batch_size;j++){
-            int index_start_of_chanels = j *input_height*input_width*input_channels + index_of_mu_thu_i;          // xac dinh vi tri cua kennh thu i cua batch thu j
-            for (int k = 0; k< input_height*input_width; k++){
-               output[k + index_start_of_chanels] = dL_dhat_xi[k + index_start_of_chanels] * 1/(sqrt(varience[i] * varience[i] + EPSILON)) + dL_dsigma_B_binh[i] * 1/m * 2*(input[k + index_start_of_chanels]) + dL_d_mu_B[i] * 1/m;
-            }
-        }
-    }
-
-}
 
 int main() {
     printf("⚙️ Bắt đầu chạy model...\n");
@@ -474,20 +383,6 @@ int main() {
     float weight_output[dense1_size * output_size];
     float* bias_null = NULL;
 
-    float bn1_gamma[conv1_channels], bn1_beta[conv1_channels], bn1_mean[conv1_channels], bn1_variance[conv1_channels];
-    float bn2_gamma[conv2_channels], bn2_beta[conv2_channels], bn2_mean[conv2_channels], bn2_variance[conv2_channels];
-
-    read_from_file("weight/weight/batchnorm1_gamma.txt", bn1_gamma, conv1_channels);
-    read_from_file("weight/weight/batchnorm1_beta.txt", bn1_beta, conv1_channels);
-    read_from_file("weight/weight/batchnorm1_mean.txt", bn1_mean, conv1_channels);
-    read_from_file("weight/weight/batchnorm1_variance.txt", bn1_variance, conv1_channels);
-
-    // BatchNorm 2
-    read_from_file("weight/weight/batchnorm2_gamma.txt", bn2_gamma, conv2_channels);
-    read_from_file("weight/weight/batchnorm2_beta.txt", bn2_beta, conv2_channels);
-    read_from_file("weight/weight/batchnorm2_mean.txt", bn2_mean, conv2_channels);
-    read_from_file("weight/weight/batchnorm2_variance.txt", bn2_variance, conv2_channels);
-
     // ⚙️ Gradient buffers
     float grad_kernel1[kernel_size * kernel_size * input_channels * conv1_channels];
     float grad_kernel2[kernel_size * kernel_size * conv1_channels * conv2_channels];
@@ -500,16 +395,13 @@ int main() {
     read_from_file("weight/weight/dense1_weight.txt", weight_dense1, sizeof(weight_dense1) / sizeof(float));
     read_from_file("weight/weight/output_weight.txt", weight_output, sizeof(weight_output) / sizeof(float));
 
-    // init_random_array(kernel1, sizeof(kernel1) / sizeof(float));
-    // init_random_array(kernel2, sizeof(kernel2) / sizeof(float));
-    // init_random_array(weight_dense1, sizeof(weight_dense1) / sizeof(float));
-    // init_random_array(weight_output, sizeof(weight_output) / sizeof(float));
-
     FILE *acc_file = fopen("weight/backward_output/accuracy_log.txt", "w");
     if (!acc_file) {
         printf("⚠️ Không thể mở file accuracy_log.txt để ghi!\n");
         return 1;
     }
+
+
     // ⚙️ Buffers
     float input[32 * 32 * 3];
     float output_conv1[32 * 32 * conv1_channels];
@@ -529,13 +421,10 @@ int main() {
     int max_indices_pool1[16 * 16 * conv1_channels];
     int max_indices_pool2[8 * 8 * conv2_channels];
 
-    float buffer_output_conv1[32*32*conv1_channels];
-    float buffer_output_conv2[16*16*conv2_channels];
-
     float output_forward_relu1[32*32*conv1_channels];
     float output_forward_relu2[16*16*conv2_channels];
-    float output_forward_relu3[64];
 
+    float output_forward_relu3[64];
 
     // ⚙️ Gradient buffers cho backward
     float grad_output_fc2[output_size];
@@ -545,12 +434,7 @@ int main() {
     float grad_output_conv2[16 * 16 * conv2_channels];
     float grad_output_pool1[16 * 16 * conv1_channels];
     float grad_output_conv1[32 * 32 * conv1_channels];
-    float grad_input[32 * 32 * 3];  
-    float grad_output_batchnorm2[16*16*conv2_channels];
-    float grad_output_batchnorm1[32*32*conv1_channels];
-    float grad_output_relu3[64];
-    float grad_output_relu2[16*16*conv2_channels];
-    float grad_output_relu1[32*32*conv1_channels];
+    float grad_input[32 * 32 * 3];
 
     int correct_predictions = 0;
     FILE *log_file = fopen("log_model.txt", "w"); // dùng "a" nếu muốn ghi tiếp mỗi lần chạy
@@ -575,20 +459,13 @@ if (!file_output_log) {
             snprintf(label_file, sizeof(label_file), "data/label_%d.txt", i);
             read_from_file(input_file, input, 32 * 32 * 3);
             int true_label = read_label_from_file(label_file);
-            //printf("done\n");
+            printf("done\n");
             // 🧪 Forward pass
             conv2d(input, kernel1, bias_null, output_conv1,
                    input_width, input_height, input_channels,
                    kernel_size, kernel_size, conv1_channels,
                    1, 1, padding);
-
-            // lay input cho batch norm
-            for (int i = 0; i< 32*32*conv1_channels; i++){
-                buffer_output_conv1[i] = output_conv1[i];
-            }
-            //
-            batchnorm(output_conv1, output_bn1_raw, bn1_gamma, bn1_beta, bn1_mean, bn1_variance, input_width, input_height, input_channels);
-            relu(output_bn1_raw, output_forward_relu1, 32 * 32 * conv1_channels);
+            relu(output_conv1, output_forward_relu1, 32 * 32 * conv1_channels);
             maxpool(output_forward_relu1, output_pool1, max_indices_pool1,
                     32, 32, conv1_channels, 2, 2, 2);
 
@@ -596,23 +473,12 @@ if (!file_output_log) {
                    16, 16, conv1_channels,
                    kernel_size, kernel_size, conv2_channels,
                    1, 1, padding);
-            for (int i = 0; i< 16*16*conv2_channels; i++){
-                    buffer_output_conv2[i] = output_conv2[i];
-                }
-            
-            batchnorm(output_conv2, output_bn2_raw, bn2_gamma, bn2_beta, bn2_mean, bn2_variance, 16, 16, conv2_channels);
-            relu(output_bn2_raw, output_forward_relu2, 16 * 16 * conv2_channels);
+            relu(output_conv2, output_forward_relu2, 16 * 16 * conv2_channels);
             maxpool(output_forward_relu2, output_pool2, max_indices_pool2,
                     16, 16, conv2_channels, 2, 2, 2);
 
             flatten_from_hwc_to_whc_flatten(output_pool2, flatten, 8, 8, conv2_channels);
             fully_connected(flatten, weight_dense1, output_fc1, flatten_size, dense1_size);
-            fprintf(file_output_log, "Grad_input: ");
-            for (int j = 0; j < 64 * output_size; j++) {
-                fprintf(file_output_log, " %f", output_fc1[j]);
-            }
-             
-             fprintf(file_output_log, "\n");
             relu(output_fc1, output_forward_relu3, dense1_size);
             fully_connected(output_forward_relu3, weight_output, output_fc2, dense1_size, output_size);
             softmax(output_fc2, output_fc3, output_size);
@@ -628,42 +494,169 @@ if (!file_output_log) {
             
             y_true[true_label] = 1.0f;
             softmax_cross_entropy_derivative(output_fc3, y_true, grad_output_fc2, output_size);
-            fully_connected_backward(grad_output_fc2, output_forward_relu3, weight_output, grad_output_relu3,
+            fully_connected_backward(grad_output_fc2, output_forward_relu3, weight_output, grad_output_fc1,
                                     grad_weight_output, dense1_size, output_size, learning_rate);
-            relu_backward(grad_output_relu3, output_fc1, grad_output_fc1, dense1_size);
+            relu_backward(grad_output_fc1, output_fc1, grad_output_fc1, dense1_size);
             fully_connected_backward(grad_output_fc1, flatten, weight_dense1, grad_flatten,
                                     grad_weight_dense1, flatten_size, dense1_size, learning_rate);
             flatten_backward(grad_flatten, grad_output_pool2, 8, 8, conv2_channels);
-            maxpool_backward(grad_output_pool2, max_indices_pool2, grad_output_relu2,
+            maxpool_backward(grad_output_pool2, max_indices_pool2, grad_output_conv2,
                              16, 16, conv2_channels, 2, 2, 2);
-            relu_backward(grad_output_relu2, output_conv2, grad_output_conv2, 16 * 16 * conv2_channels);
-
-            batchnorm_backward(buffer_output_conv2, grad_output_conv2,learning_rate, bn1_gamma, bn1_beta, bn1_mean, bn1_variance, 1, grad_output_batchnorm2,16, 16,64);
-            conv2d_backward(grad_output_batchnorm2, output_pool1, kernel2, grad_output_pool1, grad_kernel2,
+            relu_backward(grad_output_conv2, output_conv2, grad_output_conv2, 16 * 16 * conv2_channels);
+            
+            conv2d_backward(grad_output_conv2, output_pool1, kernel2, grad_output_pool1, grad_kernel2,
                             16, 16, conv1_channels, kernel_size, kernel_size, conv2_channels,
                             1, 1, padding, learning_rate);
-            maxpool_backward(grad_output_pool1, max_indices_pool1, grad_output_relu1,
+            maxpool_backward(grad_output_pool1, max_indices_pool1, grad_output_conv1,
                              32, 32, conv1_channels, 2, 2, 2);
-            relu_backward(grad_output_relu1, output_conv1, grad_output_conv1, 32 * 32 * conv1_channels);
-            batchnorm_backward(buffer_output_conv1, grad_output_conv1,learning_rate, bn2_gamma, bn2_beta, bn2_mean, bn2_variance, 1, grad_output_batchnorm1,32, 32,conv1_channels);
-            conv2d_backward(grad_output_batchnorm1, input, kernel1, grad_input, grad_kernel1,
+            relu_backward(grad_output_conv1, output_conv1, grad_output_conv1, 32 * 32 * conv1_channels);
+            conv2d_backward(grad_output_conv1, input, kernel1, grad_input, grad_kernel1,
                             input_width, input_height, input_channels, kernel_size, kernel_size,
                             conv1_channels, 1, 1, padding, learning_rate);
 
-           //  printf("Image %d - Predict: %d, True: %d\n", i, predicted_label, true_label);
-        }
-        printf("Epoch %d - Accuracy: %.2f%% (%d / 100 correct)\n",
-               epoch, (float)correct_predictions / 100.0, correct_predictions);
-        fprintf(acc_file, "%.2f\n", (float)correct_predictions / 100.0);
-        fprintf(file_output_log, "output_fc3: ");
-             for (int j = 0; j < 16*16*conv2_channels; j++) {
-                 fprintf(file_output_log, "%f ", grad_kernel2[j]); // Ghi giá trị của output_fc2 vào file
+            printf("Image %d - Predict: %d, True: %d\n", i, predicted_label, true_label);
+            fprintf(log_file,"Image %d - Predict: %d, True: %d\n", i, predicted_label, true_label);
+
+            
+            // Sau đó trong vòng lặp:
+             fprintf(file_output_log, "Image %d - Predict: %d, True: %d\n", i, predicted_label, true_label);
+             fprintf(file_output_log, "output_fc3: ");
+             for (int j = 0; j < 64 * output_size; j++) {
+                 fprintf(file_output_log, "%f ", grad_output_fc1[j]); // Ghi giá trị của output_fc2 vào file
              }
              fprintf(file_output_log, "\n");
              
+             // Đóng file sau khi hoàn tất
+
+        }
+        //quá trình validation
+        // for (int i = 6000; i < 8000; i++) {
+
+        //     // 🧠 Đọc input & label
+        //     char input_file[50], label_file[50];
+        //     snprintf(input_file, sizeof(input_file), "data/image_%d.txt", i);
+        //     snprintf(label_file, sizeof(label_file), "data/label_%d.txt", i);
+        //     read_from_file(input_file, input, 32 * 32 * 3);
+        //     int true_label_valid = read_label_from_file(label_file);
+        //     printf("done\n");
+        //     // 🧪 Forward pass
+        //     conv2d(input, kernel1, bias_null, output_conv1,
+        //            input_width, input_height, input_channels,
+        //            kernel_size, kernel_size, conv1_channels,
+        //            1, 1, padding);
+        //     relu(output_conv1, output_conv1, 32 * 32 * conv1_channels);
+        //     maxpool(output_conv1, output_pool1, max_indices_pool1,
+        //             32, 32, conv1_channels, 2, 2, 2);
+
+        //     conv2d(output_pool1, kernel2, bias_null, output_conv2,
+        //            16, 16, conv1_channels,
+        //            kernel_size, kernel_size, conv2_channels,
+        //            1, 1, padding);
+        //     relu(output_conv2, output_conv2, 16 * 16 * conv2_channels);
+        //     maxpool(output_conv2, output_pool2, max_indices_pool2,
+        //             16, 16, conv2_channels, 2, 2, 2);
+
+        //     flatten_from_hwc_to_whc_flatten(output_pool2, flatten, 8, 8, conv2_channels);
+        //     fully_connected(flatten, weight_dense1, output_fc1, flatten_size, dense1_size);
+        //     relu(output_fc1, output_fc1, dense1_size);
+        //     fully_connected(output_fc1, weight_output, output_fc2, dense1_size, output_size);
+        //     softmax(output_fc2, output_fc3, output_size);
+
+    //         🎯 Dự đoán
+    //         int predicted_label_valid = get_max_label(output_fc3, output_size);
+    //         if (predicted_label_valid == true_label_valid)
+    //             correct_predictions++;
+    //          printf("Image %d - Predict: %d, True: %d\n", i, predicted_label_valid, true_label_valid);
+    //         fprintf(log_file,"Image %d - Predict: %d, True: %d\n", i, predicted_label_valid, true_label_valid);
+    // }
+
+       
+        printf("Epoch %d - Accuracy: %.2f%% (%d / 100 correct)\n",
+               epoch, (float)correct_predictions / 100.0, correct_predictions);
+
+        fprintf(log_file,"Epoch %d - Accuracy: %.2f%% (%d / 100 correct)\n",
+                epoch, (float)correct_predictions / 100.0, correct_predictions);
+        
 
         
     }
+    // save_float_array_to_txt_file("weight/backward_output/kernel1_updated.txt", kernel1, kernel_size * kernel_size * input_channels * conv1_channels);
+    // save_float_array_to_txt_file("weight/backward_output/kernel2_updated.txt", kernel2, kernel_size * kernel_size * conv1_channels * conv2_channels);
+    // save_float_array_to_txt_file("weight/backward_output/dense1_weights_updated.txt", weight_dense1, flatten_size * dense1_size);
+    // save_float_array_to_txt_file("weight/backward_output/output_weights_updated.txt", weight_output, dense1_size * output_size);
+
+
+     // ⚙️ Load weights
+    // read_from_file("weight/backward_output/kernel1_updated.txt", kernel1, sizeof(kernel1) / sizeof(float));
+    // read_from_file("weight/backward_output/kernel2_updated.txt", kernel2, sizeof(kernel2) / sizeof(float));
+    // read_from_file("weight/backward_output/dense1_weights_updated.txt", weight_dense1, sizeof(weight_dense1) / sizeof(float));
+    // read_from_file("weight/backward_output/output_weights_updated.txt", weight_output, sizeof(weight_output) / sizeof(float));
+ 
+    //quá trình test
+    for(int i =50000;i < 60000; i++){
+        
+
+        correct_predictions = 0;
+         // 🧠 Đọc input & label
+         char input_file[50], label_file[50];
+         snprintf(input_file, sizeof(input_file), "data/image_%d.txt", i);
+         snprintf(label_file, sizeof(label_file), "data/label_%d.txt", i);
+         read_from_file(input_file, input, 32 * 32 * 3);
+         // for (int i = 0; i < 10; i++){
+         //     printf("%f\n", input[i]);
+         // }   
+         int true_label_test = read_label_from_file(label_file);
+ 
+         // 🧪 Conv1 → ReLU → Pool
+         conv2d(input, kernel1, bias_null, output_conv1,
+             input_width, input_height, input_channels,
+             kernel_size, kernel_size, conv1_channels,
+             1, 1, padding);
+ 
+     
+ 
+     relu(output_bn1_raw, output_bn1, 32 * 32 * conv1_channels);
+     maxpool(output_bn1, output_pool1, max_indices_pool1,32, 32, conv1_channels, 2, 2, 2);
+ 
+ 
+     // 🧪 Conv2 → BatchNorm → ReLU → Pool
+     conv2d(output_pool1, kernel2, bias_null, output_conv2,
+         16, 16, conv1_channels,
+         kernel_size, kernel_size, conv2_channels,
+         1, 1, padding);
+ 
+ 
+     relu(output_bn2_raw, output_bn2, 16 * 16 * conv2_channels);
+     maxpool(output_bn2, output_pool2,max_indices_pool2, 16, 16, conv2_channels, 2, 2, 2);
+ 
+ 
+     // 🧠 Dense1 → ReLU
+     flatten_from_hwc_to_whc_flatten(output_pool2 , flatten, 8, 8, 64);
+ 
+     fully_connected(flatten, weight_dense1, output_fc1, flatten_size, dense1_size);
+     relu(output_fc1, output_fc1, dense1_size);
+ 
+     // 🧠 Output → Softmax
+     fully_connected(output_fc1, weight_output, output_fc2, dense1_size, output_size);
+     softmax(output_fc2, output_fc2, output_size);
+ 
+         // 🎯 Dự đoán và so sánh
+         int predicted_label_test = get_max_label(output_fc2, output_size);
+         if (predicted_label_test == true_label_test)
+             correct_predictions++;
+
+         printf("Image %d - Predict: %d, True: %d\n", i, predicted_label_test, true_label_test);
+         fprintf(log_file,"Image %d - Predict: %d, True: %d\n", i, predicted_label_test, true_label_test);
+         //save_float_array_to_txt_file("weight/forward_output/output.txt", output_fc2, output_size);
+     }
+ 
+     printf("\n✅ Accuracy: %.2f%% (%d / 1000 correct)\n",
+            (float)correct_predictions / 100.0, correct_predictions);
+//  fprintf(log_file,"\n✅ Accuracy: %.2f%% (%d / 1000 correct)\n",
+//             (float)correct_predictions / 100.0, correct_predictions);
+     return 0;
+    
+
         // ✅ GHI OUTPUT CỦA CÁC LỚP (FORWARD)
     // save_float_array_to_txt_file("weight/forward_output/conv1.txt", output_conv1, 32 * 32 * conv1_channels);
     // save_float_array_to_txt_file("weight/forward_output/pool1.txt", output_pool1, 16 * 16 * conv1_channels);

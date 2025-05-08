@@ -1,3 +1,5 @@
+#ifndef MAXPOOL_H
+#define MAXPOOL_H
 #include <stdio.h>
 #include <stdint.h>
 

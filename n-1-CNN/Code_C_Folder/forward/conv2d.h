@@ -1,4 +1,5 @@
-
+#ifndef CONV2D_H
+#define CONV2D_H
 #include<stdio.h>
 #include<stdint.h>
 void conv2d(

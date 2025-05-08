@@ -1,16 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-void rotate_filter (float *weight_in, float *weight_out, int weight_height, int weight_channels, int filter){
-    float tmp_array [50000];
-    for (int f = 0; f < filter * weight_channels; f++){
-         for (int j = 0; j < weight_height * weight_height ; j++){
-            tmp_array[j + f*weight_height * weight_height] = weight_in[weight_height * weight_height - 1 - j + f*weight_height * weight_height];
-        }
-    }
-    for (int i = 0; i < weight_height * weight_height * weight_channels * filter; i++){
-        weight_out[i] = tmp_array[i];
-    }
-}
 void conv2d_backward(
     float *grad_output,      // Gradient từ lớp sau
     float *input,            // Input của Conv2D từ forward
@@ -24,8 +13,7 @@ void conv2d_backward(
 ) {
     int output_height = (input_height - kernel_height + 2 * padding) / stride_height + 1;
     int output_width = (input_width - kernel_width + 2 * padding) / stride_width + 1;
-    float *kernel1 = (float*)malloc(kernel_width*kernel_height*output_channels*input_channels * sizeof(float));
-    // rotate_filter(kernel, kernel1, kernel_height, input_channels, output_channels);
+    
     // Khởi tạo grad_input và grad_kernel bằng 0
     for (int i = 0; i < input_height * input_width * input_channels; i++) {
         grad_input[i] = 0.0f;
